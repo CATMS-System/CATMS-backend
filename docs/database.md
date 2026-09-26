@@ -190,3 +190,22 @@ WHERE Doctor_ID = :doctor_id
   );
 ```
 
+---
+
+## 8. Appointment Collision Prevention & Engine Compatibility
+
+### 8.1 MySQL 8.0 Trigger
+For evaluation against standard MySQL 8.0 / MariaDB, the trigger script is provided in:
+`database/triggers/trg_check_appointment_overlap.sql`
+
+It enforces:
+- `BEFORE INSERT` and `BEFORE UPDATE` collision validation on `Appointment`.
+- Calculates candidate end time using `ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))`.
+- Prevents double-booking by raising `SIGNAL SQLSTATE '45000'`.
+
+### 8.2 Distributed TiDB Cloud Compatibility
+TiDB Cloud Serverless utilizes a distributed consensus architecture where server-side SQL triggers are disabled by design. To maintain 100% ACID conflict protection across all database engines:
+- The collision logic is implemented in `app/services/appointment_service.py` (`check_doctor_appointment_overlap`).
+- Executed atomically inside SQLAlchemy transactions before inserting or updating appointment records.
+
+
