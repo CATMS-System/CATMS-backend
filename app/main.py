@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
-from app.api.routers import auth
+from app.api.routers import auth, branches, staff
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -25,6 +25,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(branches.router, prefix="/api/v1/branches", tags=["branches"])
+app.include_router(staff.router, prefix="/api/v1/staff", tags=["staff"])
 
 @app.get("/")
 def root():
