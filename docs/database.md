@@ -97,30 +97,55 @@ def get_db():
 
 ---
 
-## 5. Usage in FastAPI Routes
+## 5. Query Standard: Option B (Manual SQL with SQLAlchemy Session)
 
-Inject the database session into any API router using `Depends(get_db)`:
+Per project guidelines, **Option B** is enforced across all backend development:
+- **No automated ORM query builder** (do NOT use `db.query(Model).filter(...)`).
+- **SQLAlchemy manages connections and transactions only** (`db: Session = Depends(get_db)`).
+- **All queries MUST be written as explicit, manual SQL** wrapped in `text("...")`.
+- Use parameterized queries with `:param` placeholders to prevent SQL injection.
+- Use `result.mappings().all()` or `result.mappings().first()` to obtain dictionary-like records.
 
+### Examples:
+
+#### 1. SELECT Query (Single Record)
 ```python
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from app.db.session import get_db
+query = text("SELECT Patient_ID, First_Name, Last_Name, NIC FROM Patient WHERE NIC = :nic")
+result = db.execute(query, {"nic": "852140938V"}).mappings().first()
+if result:
+    print(result["First_Name"], result["NIC"])
+```
 
-router = APIRouter()
+#### 2. SELECT Query (Multiple Records with Join)
+```python
+query = text("""
+    SELECT d.Doctor_ID, s.First_Name, s.Last_Name, s.Email, b.Branch_Name
+    FROM Doctor d
+    JOIN Staff s ON d.Doctor_ID = s.Staff_ID
+    JOIN Branch b ON s.Branch_ID = b.Branch_ID
+    WHERE b.Branch_ID = :branch_id
+""")
+rows = db.execute(query, {"branch_id": 1}).mappings().all()
+```
 
-
-@router.get("/health/db")
-def check_db_connection(db: Session = Depends(get_db)):
-    """Verifies that the backend can query the MySQL database."""
-    try:
-        result = db.execute(text("SELECT 1")).scalar()
-        return {"status": "connected", "result": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+#### 3. INSERT / UPDATE Query (with Transaction Commit)
+```python
+query = text("""
+    INSERT INTO Emergency_Contact (Patient_ID, First_Name, Last_Name, Relationship_To_Patient, Contact_Number)
+    VALUES (:patient_id, :first_name, :last_name, :relation, :contact)
+""")
+db.execute(query, {
+    "patient_id": 1,
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "relation": "Spouse",
+    "contact": "+94 77 123 4568"
+})
+db.commit()
 ```
 
 ---
+
 
 ## 6. Common Issues & Troubleshooting
 
@@ -130,82 +155,5 @@ def check_db_connection(db: Session = Depends(get_db)):
    Ensure `CatMS` has been created in MySQL Workbench by executing `CREATE DATABASE IF NOT EXISTS CatMS;` from `schema.sql`. Note that database names can be case-sensitive depending on your operating system configuration.
 3. **Authentication Plugin Error**:
    If an error regarding `caching_sha2_password` occurs, ensure `cryptography` is installed (`pip install cryptography`).
-
----
-
-## 7. Doctor, Schedule & Appointment Query Reference
-
-### 7.1 Doctors and Assigned Specialties
-```sql
-SELECT 
-    d.Doctor_ID,
-    CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
-    s.Contact_Number,
-    s.Email,
-    b.Branch_Name AS Home_Branch,
-    d.License_Number,
-    d.Standard_Consultation_Fee,
-    GROUP_CONCAT(spec.Specialty_Name SEPARATOR ', ') AS Specialties
-FROM Doctor d
-JOIN Staff s ON d.Doctor_ID = s.Staff_ID
-JOIN Branch b ON s.Branch_ID = b.Branch_ID
-LEFT JOIN Doctor_Specialty ds ON d.Doctor_ID = ds.Doctor_ID
-LEFT JOIN Specialty spec ON ds.Specialty_ID = spec.Specialty_ID
-GROUP BY d.Doctor_ID, s.First_Name, s.Last_Name, s.Contact_Number, s.Email, b.Branch_Name, d.License_Number, d.Standard_Consultation_Fee;
-```
-
-### 7.2 Doctor Weekly Schedules by Branch
-```sql
-SELECT 
-    ds.Schedule_ID,
-    CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
-    b.Branch_Name AS Schedule_Branch,
-    ds.Day_Of_Week,
-    ds.Start_Time,
-    ds.End_Time,
-    ds.Availability_Status
-FROM Doctor_Schedule ds
-JOIN Doctor d ON ds.Doctor_ID = d.Doctor_ID
-JOIN Staff s ON d.Doctor_ID = s.Staff_ID
-JOIN Branch b ON ds.Branch_ID = b.Branch_ID
-ORDER BY d.Doctor_ID, FIELD(ds.Day_Of_Week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
-```
-
-### 7.3 Doctor Appointment Slot Collision Check
-```sql
-SELECT 
-    Appointment_ID,
-    Doctor_ID,
-    Appointment_Date,
-    Start_Time,
-    ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60)) AS End_Time,
-    Status
-FROM Appointment
-WHERE Doctor_ID = :doctor_id
-  AND Appointment_Date = :appointment_date
-  AND Status IN ('Scheduled', 'Confirmed')
-  AND (
-      (:new_start < ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))) AND
-      (:new_end > Start_Time)
-  );
-```
-
----
-
-## 8. Appointment Collision Prevention & Engine Compatibility
-
-### 8.1 MySQL 8.0 Trigger
-For evaluation against standard MySQL 8.0 / MariaDB, the trigger script is provided in:
-`database/triggers/trg_check_appointment_overlap.sql`
-
-It enforces:
-- `BEFORE INSERT` and `BEFORE UPDATE` collision validation on `Appointment`.
-- Calculates candidate end time using `ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))`.
-- Prevents double-booking by raising `SIGNAL SQLSTATE '45000'`.
-
-### 8.2 Distributed TiDB Cloud Compatibility
-TiDB Cloud Serverless utilizes a distributed consensus architecture where server-side SQL triggers are disabled by design. To maintain 100% ACID conflict protection across all database engines:
-- The collision logic is implemented in `app/services/appointment_service.py` (`check_doctor_appointment_overlap`).
-- Executed atomically inside SQLAlchemy transactions before inserting or updating appointment records.
 
 
