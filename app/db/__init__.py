@@ -1,2 +1,4 @@
-# Database package
-from app.db.session import engine, SessionLocal, get_db, Base
+# Database package (Option C: Plain PyMySQL)
+from app.db.connection import get_db, get_db_connection
+
+__all__ = ["get_db", "get_db_connection"]

@@ -1,25 +1,28 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+import pymysql
 from app.api.deps import get_db
 
 api_router = APIRouter()
 
 
 @api_router.get("/health", tags=["Health"])
-def health_check(db: Session = Depends(get_db)):
+def health_check(conn: pymysql.Connection = Depends(get_db)):
     """
-    Health check endpoint verifying API service and database connectivity.
+    Health check endpoint verifying API service and PyMySQL database connectivity.
     """
     try:
-        db.execute(text("SELECT 1"))
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 AS status")
+            result = cur.fetchone()
         db_status = "connected"
     except Exception as e:
         db_status = f"error: {str(e)}"
+        result = None
 
     return {
         "status": "healthy",
-        "database": db_status
+        "database": db_status,
+        "query_result": result
     }
 
 # Team members will mount their domain routers here:
