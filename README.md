@@ -1,6 +1,6 @@
 # CATMS Backend Service
 
-Backend service for the Clinic Appointment and Treatment Management System (CATMS), built with Python FastAPI, SQLAlchemy, and MySQL (TiDB Cloud).
+Backend service for the Clinic Appointment and Treatment Management System (CATMS), built with Python FastAPI and MySQL (TiDB Cloud) using **Option C (Plain PyMySQL)**.
 
 ## Setup Instructions
 
@@ -38,11 +38,13 @@ cp .env.example .env
 ```
 
 Open `.env` and fill in your database credentials:
-- `DB_HOST`: Database host
-- `DB_PORT`: Database port (default: 4000)
+- `DB_HOST`: Database host (e.g. TiDB Cloud gateway)
+- `DB_PORT`: Database port (default: `4000`)
 - `DB_USER`: Database username
 - `DB_PASSWORD`: Database password
 - `DB_NAME`: Database name (`CatMS`)
+- `SERVER_HOST`: Backend host (default: `0.0.0.0`)
+- `SERVER_PORT`: Backend port (default: `8000`)
 
 ### 5. Verify Database Connection
 Test connectivity to the database:
@@ -50,7 +52,26 @@ Test connectivity to the database:
 ```bash
 python test_connection.py
 ```
+Or run the Option C test:
+```bash
+python tests/test_health.py
+```
 
-### 6. Documentation
+### 6. Run the Backend Service
+Start the FastAPI server on port `8000`:
+
+```bash
+python run.py
+```
+Or directly with Uvicorn:
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+- API Base URL: `http://localhost:8000`
+- Interactive Swagger Docs: `http://localhost:8000/docs`
+- Health Check: `http://localhost:8000/api/v1/health`
+
+### 7. Documentation
 Refer to `docs/` for additional technical documentation:
-- `docs/database.md`: Database connectivity and SSL configuration guide.
+- `docs/database.md`: Database connectivity, Option C query standards, and connection lifecycle.

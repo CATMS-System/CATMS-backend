@@ -1,61 +1,77 @@
-# Database Connectivity Guide: MySQL & FastAPI
+# Database Connectivity Guide: Option C (Plain PyMySQL)
 
-This guide outlines how the Python FastAPI backend connects to the MySQL database instance created in MySQL Workbench.
+This guide outlines how the Python FastAPI backend connects to the MySQL / TiDB Cloud database using **Option C (Plain PyMySQL)** without any SQLAlchemy ORM layer.
 
 ---
 
 ## 1. Required Python Packages
 
-To connect Python to MySQL 8.0+, install the following packages:
+Install the following packages:
 
 ```bash
-pip install sqlalchemy pymysql cryptography pydantic-settings
+pip install fastapi "uvicorn[standard]" pymysql cryptography pydantic pydantic-settings python-dotenv certifi
 ```
 
-- **`sqlalchemy` (2.0+)**: The SQL toolkit and Object-Relational Mapper (ORM).
-- **`pymysql`**: Pure Python MySQL client driver (recommended on Windows to avoid C++ build dependencies).
-- **`cryptography`**: Required by `pymysql` to authenticate with MySQL 8.0 default `caching_sha2_password` encryption.
-- **`pydantic-settings`**: Typed configuration loader that reads from `.env`.
+- **`pymysql`**: Pure Python MySQL client driver.
+- **`cryptography`**: Required for MySQL 8.0 / TiDB authentication (`caching_sha2_password`).
+- **`certifi`**: Provides verified CA TLS/SSL certificates for TiDB Cloud connections.
+- **`pydantic-settings`**: Typed configuration loader that reads credentials from `.env`.
+
+*(Note: `sqlalchemy` is completely removed per Option C).*
 
 ---
 
-## 2. Environment Configuration (`.env`)
+## 2. Environment & Port Configuration (`.env`)
 
-Store database credentials in `.env` at the root of `CATMS-backend` (never commit this file). A template `.env.example` should be committed for team members.
+Store credentials and port configuration in `.env` (ignored by Git):
 
-### `.env`
 ```env
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=your_user.root
+# Server Port Configuration
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8000
+
+# Database Configuration (TiDB Cloud)
+DB_HOST=gateway01.ap-southeast-1.prod.aws.tidbcloud.com
+DB_PORT=4000
+DB_USER=4J6E1ab8gCC15PY.root
 DB_PASSWORD=your_password
 DB_NAME=CatMS
 DB_SSL_MODE=VERIFY_IDENTITY
 ```
 
+### Standard Project Ports
+- **Backend Service**: Port `8000` (`http://localhost:8000`, docs at `/docs`)
+- **Frontend Client**: Port `5173` (`http://localhost:5173`)
+
 ---
 
 ## 3. Configuration Loader (`app/core/config.py`)
 
-Using Pydantic Settings ensures credentials are type-checked and easily constructed into a database URL:
+Settings are loaded and validated using Pydantic Settings:
 
 ```python
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    PROJECT_NAME: str = "CATMS Backend"
+    API_V1_STR: str = "/api/v1"
+
+    SERVER_HOST: str = "0.0.0.0"
+    SERVER_PORT: int = 8000
+
     DB_HOST: str = "gateway01.ap-southeast-1.prod.aws.tidbcloud.com"
     DB_PORT: int = 4000
-    DB_USER: str = "your_user.root"
+    DB_USER: str = "4J6E1ab8gCC15PY.root"
     DB_PASSWORD: str = ""
     DB_NAME: str = "CatMS"
+    DB_SSL_MODE: str = "VERIFY_IDENTITY"
 
-    @property
-    def DATABASE_URL(self) -> str:
-        return f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-```
+    model_config = SettingsConfigDict(
+        env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),
+        extra="ignore"
+    )
 
 
 settings = Settings()
@@ -63,97 +79,104 @@ settings = Settings()
 
 ---
 
-## 4. Engine & Session Management (`app/db/session.py`)
+## 4. Connection Lifecycle (`app/db/connection.py`)
 
-SQLAlchemy manages a connection pool to MySQL. Each HTTP request gets its own session and automatically closes it when finished.
+Raw connections are managed cleanly through PyMySQL with automatic TLS handling and `DictCursor`:
 
 ```python
 import certifi
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+import pymysql
+import pymysql.cursors
+from typing import Generator
 from app.core.config import settings
 
-engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={"ssl": {"ca": certifi.where()}},  # Enforce TLS encryption for TiDB Cloud
-    pool_pre_ping=True,  # Checks connection validity before executing queries
-    pool_size=10,        # Maximum number of persistent connections in pool
-    max_overflow=20      # Extra connections allowed during peak traffic
-)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def get_db_connection() -> pymysql.Connection:
+    """Creates a raw PyMySQL connection with DictCursor."""
+    ssl_config = None
+    if "tidbcloud.com" in settings.DB_HOST or settings.DB_SSL_MODE:
+        ssl_config = {"ca": certifi.where()}
 
-Base = declarative_base()
+    return pymysql.connect(
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        user=settings.DB_USER,
+        password=settings.DB_PASSWORD,
+        database=settings.DB_NAME,
+        cursorclass=pymysql.cursors.DictCursor,
+        ssl=ssl_config,
+        autocommit=False,
+        connect_timeout=10
+    )
 
 
-def get_db():
-    """FastAPI dependency yielding a database session per request."""
-    db = SessionLocal()
+def get_db() -> Generator[pymysql.Connection, None, None]:
+    """FastAPI dependency yielding a clean connection per request."""
+    connection = get_db_connection()
     try:
-        yield db
+        yield connection
     finally:
-        db.close()
+        connection.close()
 ```
 
 ---
 
-## 5. Query Standard: Option B (Manual SQL with SQLAlchemy Session)
+## 5. Query Standard: Option C (Plain PyMySQL)
 
-Per project guidelines, **Option B** is enforced across all backend development:
-- **No automated ORM query builder** (do NOT use `db.query(Model).filter(...)`).
-- **SQLAlchemy manages connections and transactions only** (`db: Session = Depends(get_db)`).
-- **All queries MUST be written as explicit, manual SQL** wrapped in `text("...")`.
-- Use parameterized queries with `:param` placeholders to prevent SQL injection.
-- Use `result.mappings().all()` or `result.mappings().first()` to obtain dictionary-like records.
+All database operations must follow plain PyMySQL standards:
+- Always use **`%s`** placeholders for parameters (prevents SQL injection).
+- Use `with connection.cursor() as cursor:` context manager for safe cursor closure.
+- Explicitly call `connection.commit()` for `INSERT`, `UPDATE`, and `DELETE`.
+- Call `connection.rollback()` in exception handlers if an operation fails.
 
 ### Examples:
 
-#### 1. SELECT Query (Single Record)
+#### 1. SELECT Single Record
 ```python
-query = text("SELECT Patient_ID, First_Name, Last_Name, NIC FROM Patient WHERE NIC = :nic")
-result = db.execute(query, {"nic": "852140938V"}).mappings().first()
-if result:
-    print(result["First_Name"], result["NIC"])
+with conn.cursor() as cursor:
+    cursor.execute("SELECT Patient_ID, First_Name, Last_Name, NIC FROM Patient WHERE NIC = %s", (nic,))
+    patient = cursor.fetchone()  # Returns dict: {"Patient_ID": 1, "First_Name": "John", ...}
 ```
 
-#### 2. SELECT Query (Multiple Records with Join)
+#### 2. SELECT Multiple Records (with Joins)
 ```python
-query = text("""
-    SELECT d.Doctor_ID, s.First_Name, s.Last_Name, s.Email, b.Branch_Name
-    FROM Doctor d
-    JOIN Staff s ON d.Doctor_ID = s.Staff_ID
-    JOIN Branch b ON s.Branch_ID = b.Branch_ID
-    WHERE b.Branch_ID = :branch_id
-""")
-rows = db.execute(query, {"branch_id": 1}).mappings().all()
+with conn.cursor() as cursor:
+    sql = """
+        SELECT d.Doctor_ID, s.First_Name, s.Last_Name, s.Email, b.Branch_Name
+        FROM Doctor d
+        JOIN Staff s ON d.Doctor_ID = s.Staff_ID
+        JOIN Branch b ON s.Branch_ID = b.Branch_ID
+        WHERE b.Branch_ID = %s
+    """
+    cursor.execute(sql, (branch_id,))
+    doctors = cursor.fetchall()  # Returns list of dicts
 ```
 
-#### 3. INSERT / UPDATE Query (with Transaction Commit)
+#### 3. INSERT / UPDATE with Transaction Commit
 ```python
-query = text("""
-    INSERT INTO Emergency_Contact (Patient_ID, First_Name, Last_Name, Relationship_To_Patient, Contact_Number)
-    VALUES (:patient_id, :first_name, :last_name, :relation, :contact)
-""")
-db.execute(query, {
-    "patient_id": 1,
-    "first_name": "Jane",
-    "last_name": "Doe",
-    "relation": "Spouse",
-    "contact": "+94 77 123 4568"
-})
-db.commit()
+try:
+    with conn.cursor() as cursor:
+        sql = """
+            INSERT INTO Emergency_Contact (Patient_ID, First_Name, Last_Name, Relationship_To_Patient, Contact_Number)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        cursor.execute(sql, (patient_id, first_name, last_name, relation, contact))
+    conn.commit()
+except Exception as e:
+    conn.rollback()
+    raise e
 ```
 
 ---
 
+## 6. Running the Service
 
-## 6. Common Issues & Troubleshooting
+Start the backend on port `8000`:
 
-1. **Access Denied (`1045`)**:
-   Verify the username and password in `.env` match the credentials configured in MySQL Workbench.
-2. **Database Not Found (`1049`)**:
-   Ensure `CatMS` has been created in MySQL Workbench by executing `CREATE DATABASE IF NOT EXISTS CatMS;` from `schema.sql`. Note that database names can be case-sensitive depending on your operating system configuration.
-3. **Authentication Plugin Error**:
-   If an error regarding `caching_sha2_password` occurs, ensure `cryptography` is installed (`pip install cryptography`).
-
-
+```bash
+python run.py
+```
+Or with Uvicorn:
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
