@@ -1,12 +1,13 @@
 """
 Appointment service layer providing collision validation and scheduling utilities.
 Ensures zero overlapping doctor appointments across both MySQL and TiDB Cloud environments.
+Built using Option C (Plain PyMySQL).
 """
 
 from datetime import date, time, timedelta, datetime
 from typing import Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import text
+import pymysql
+import pymysql.cursors
 
 
 class AppointmentConflictError(Exception):
@@ -25,7 +26,7 @@ def compute_end_time(start: time, duration_minutes: int) -> time:
 
 
 def check_doctor_appointment_overlap(
-    db: Session,
+    conn: pymysql.Connection,
     doctor_id: int,
     appointment_date: date,
     start_time: time,
@@ -34,6 +35,7 @@ def check_doctor_appointment_overlap(
 ) -> None:
     """
     Validates whether a doctor has any conflicting appointments on the given date and time range.
+    Uses Option C (Plain PyMySQL with DictCursor).
     Raises AppointmentConflictError if an overlap is detected.
     """
     end_time = compute_end_time(start_time, duration_minutes)
@@ -45,29 +47,35 @@ def check_doctor_appointment_overlap(
             ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60)) AS End_Time,
             Status
         FROM Appointment
-        WHERE Doctor_ID = :doctor_id
-          AND Appointment_Date = :appointment_date
+        WHERE Doctor_ID = %s
+          AND Appointment_Date = %s
           AND Status IN ('Scheduled', 'Confirmed', 'Completed')
           AND (
-              (:new_start < ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))) AND
-              (:new_end > Start_Time)
+              (%s < ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))) AND
+              (%s > Start_Time)
           )
     """
-    params = {
-        "doctor_id": doctor_id,
-        "appointment_date": appointment_date,
-        "new_start": start_time.strftime("%H:%M:%S"),
-        "new_end": end_time.strftime("%H:%M:%S")
-    }
+    params = [
+        doctor_id,
+        appointment_date,
+        start_time.strftime("%H:%M:%S"),
+        end_time.strftime("%H:%M:%S")
+    ]
 
     if exclude_appointment_id is not None:
-        query += " AND Appointment_ID != :exclude_id"
-        params["exclude_id"] = exclude_appointment_id
+        query += " AND Appointment_ID != %s"
+        params.append(exclude_appointment_id)
 
-    result = db.execute(text(query), params).fetchall()
+    with conn.cursor() as cursor:
+        cursor.execute(query, tuple(params))
+        result = cursor.fetchall()
 
     if result:
-        conflicts = [f"ID {r[0]} ({r[1]} - {r[2]}, {r[3]})" for r in result]
+        conflicts = [
+            f"ID {r['Appointment_ID']} ({r['Start_Time']} - {r['End_Time']}, {r['Status']})"
+            if isinstance(r, dict) else f"ID {r[0]} ({r[1]} - {r[2]}, {r[3]})"
+            for r in result
+        ]
         raise AppointmentConflictError(
             f"Doctor {doctor_id} already has an overlapping appointment on {appointment_date}: {', '.join(conflicts)}"
         )
