@@ -1,5 +1,6 @@
 from typing import Generator
-from app.db.session import get_db
+import pymysql
+from app.db.connection import get_db
 
-# Re-export get_db so routers can import dependencies from app.api.deps
+# Re-export get_db so all routers import dependencies uniformly from app.api.deps
 __all__ = ["get_db"]
