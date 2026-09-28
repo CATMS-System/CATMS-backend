@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     DB_NAME: str = "CatMS"
     DB_SSL_MODE: str = "VERIFY_IDENTITY"
 
+    # Security settings
+    SECRET_KEY: str = "supersecretkey_change_in_production"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),
         extra="ignore"

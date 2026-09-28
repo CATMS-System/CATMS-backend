@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Enum, ForeignKey
 from sqlalchemy.orm import relationship
-from app.database import Base
+from app.db.session import Base
 import enum
 
 class EmploymentStatusEnum(str, enum.Enum):

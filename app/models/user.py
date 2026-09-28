@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Enum, TIMESTAMP, text
-from app.database import Base
+from app.db.session import Base
 import enum
 
 class SystemRoleEnum(str, enum.Enum):

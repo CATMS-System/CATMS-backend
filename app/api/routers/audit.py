@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+import pymysql
 from typing import List, Optional
-from app.database import get_db
-from app.models.audit import AuditLog
+from app.db.connection import get_db
 from app.schemas.audit import AuditLogResponse
 from app.api.deps import require_roles
 from app.models.user import UserAccount, SystemRoleEnum
@@ -14,11 +13,20 @@ def get_audit_logs(
     table_name: Optional[str] = None,
     skip: int = 0, 
     limit: int = 100, 
-    db: Session = Depends(get_db),
+    db: pymysql.Connection = Depends(get_db),
     current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin]))
 ):
-    """Retrieve audit logs (Admin only)."""
-    query = db.query(AuditLog)
-    if table_name:
-        query = query.filter(AuditLog.Table_Name == table_name)
-    return query.order_by(AuditLog.Timestamp.desc()).offset(skip).limit(limit).all()
+    """Retrieve audit logs (Option C: PyMySQL)."""
+    with db.cursor() as cursor:
+        if table_name:
+            cursor.execute(
+                "SELECT * FROM Audit_Log WHERE Table_Name = %s ORDER BY Timestamp DESC LIMIT %s OFFSET %s",
+                (table_name, limit, skip)
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM Audit_Log ORDER BY Timestamp DESC LIMIT %s OFFSET %s",
+                (limit, skip)
+            )
+        result = cursor.fetchall()
+    return [AuditLogResponse(**row) for row in result]
