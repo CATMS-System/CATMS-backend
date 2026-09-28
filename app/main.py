@@ -1,38 +1,38 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import logging
-from app.api.routers import auth, branches, staff, audit
+from app.core.config import settings
+from app.api.v1.router import api_router
 
-# Initialize FastAPI app
 app = FastAPI(
-    title="CATMS API",
-    description="Clinic Appointment and Treatment Management System",
-    version="1.0.0"
+    title=settings.PROJECT_NAME,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
-# Setup basic logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Setup CORS (Cross-Origin Resource Sharing)
-# This allows the React frontend to communicate with this backend API
+# CORS middleware configured for frontend port 5173
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # For production, restrict this to the frontend URL
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(branches.router, prefix="/api/v1/branches", tags=["branches"])
-app.include_router(staff.router, prefix="/api/v1/staff", tags=["staff"])
-app.include_router(audit.router, prefix="/api/v1/audit-logs", tags=["audit-logs"])
+# Mount master v1 router
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
-@app.get("/")
+
+@app.get("/", tags=["Root"])
 def root():
-    return {"message": "Welcome to the CATMS API"}
+    return {
+        "message": "Welcome to CATMS API Service (Option C: Plain PyMySQL)",
+        "docs": "/docs",
+        "health": f"{settings.API_V1_STR}/health",
+        "port": settings.SERVER_PORT
+    }
 
-@app.get("/health")
-def health_check():
-    return {"status": "healthy", "database": "configured"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host=settings.SERVER_HOST, port=settings.SERVER_PORT, reload=True)

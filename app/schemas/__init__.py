@@ -1,1 +1,1 @@
-# Schemas module init
+# Schemas package (Pydantic request & response models)

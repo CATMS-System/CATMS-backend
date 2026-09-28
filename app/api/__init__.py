@@ -1,1 +1,1 @@
-# API module init
+# API package

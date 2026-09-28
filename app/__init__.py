@@ -1,1 +1,1 @@
-# Initialize app module
+# App root package
