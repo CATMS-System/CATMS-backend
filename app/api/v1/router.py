@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends
 import pymysql
 from app.api.deps import get_db
 
+from app.api.v1.endpoints import treatments, consultations
+
 api_router = APIRouter()
+api_router.include_router(treatments.router, prefix="/treatments", tags=["Treatments"])
+api_router.include_router(consultations.router, prefix="/consultations", tags=["Consultations"])
+
 
 
 @api_router.get("/health", tags=["Health"])
