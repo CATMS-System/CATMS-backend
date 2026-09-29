@@ -27,11 +27,12 @@ def get_categories(conn: pymysql.Connection) -> List[Dict[str, Any]]:
 
 def get_catalogue(
     conn: pymysql.Connection,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    category_id: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """
     Retrieves all Active treatments joined with Treatment_Category.
-    Optionally filters with LIKE on Treatment_Name or Service_Code.
+    Optionally filters by Category_ID and/or search term matching Treatment_Name or Service_Code.
     Ordered by Category_Name ASC, then Treatment_Name ASC.
     Uses raw SQL with a DictCursor.
     """
@@ -50,6 +51,10 @@ def get_catalogue(
         WHERE t.Treatment_Status = 'Active'
     """
     params = []
+
+    if category_id is not None:
+        query += " AND t.Category_ID = %s"
+        params.append(category_id)
 
     if search:
         query += " AND (t.Treatment_Name LIKE %s OR t.Service_Code LIKE %s)"
