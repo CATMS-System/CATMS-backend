@@ -1,5 +1,5 @@
-from typing import List
-from fastapi import APIRouter, Depends
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Query
 import pymysql
 
 from app.api.deps import get_db
@@ -26,12 +26,16 @@ def read_treatment_categories(conn: pymysql.Connection = Depends(get_db)) -> Lis
 
 
 @router.get("/catalogue", response_model=List[TreatmentOut])
-def read_treatment_catalogue(conn: pymysql.Connection = Depends(get_db)) -> List[TreatmentOut]:
+def read_treatment_catalogue(
+    search: Optional[str] = Query(None, description="Search term for treatment name or service code"),
+    conn: pymysql.Connection = Depends(get_db)
+) -> List[TreatmentOut]:
     """
     Retrieve all Active treatments from the catalogue joined with their category.
+    Optionally filter with LIKE on Treatment_Name or Service_Code.
     Ordered by category name, then treatment name.
     """
-    treatments = get_catalogue(conn)
+    treatments = get_catalogue(conn, search=search)
     return [
         TreatmentOut(
             treatment_id=t.get("treatment_id", t.get("Treatment_ID")),
