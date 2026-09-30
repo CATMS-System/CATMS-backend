@@ -47,6 +47,11 @@ def get_db_connection(include_database: bool = True) -> pymysql.Connection:
     return pymysql.connect(**conn_params)
 
 
+def strip_full_line_comments(sql: str) -> str:
+    """Strips full-line SQL comments (lines starting with -- after optional whitespace)."""
+    return "\n".join(line for line in sql.splitlines() if not line.strip().startswith("--"))
+
+
 def is_executable_sql(sql: str) -> bool:
     cleaned = re.sub(r"(--[^\r\n]*|#[^\r\n]*)", "", sql)
     cleaned = re.sub(r"/\*.*?\*/", "", cleaned, flags=re.DOTALL)
@@ -54,6 +59,7 @@ def is_executable_sql(sql: str) -> bool:
 
 
 def split_sql_statements(sql: str) -> list[str]:
+    sql = strip_full_line_comments(sql)
     statements = []
     current = []
     in_single = False
