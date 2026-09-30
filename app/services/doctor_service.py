@@ -168,3 +168,61 @@ def get_doctor_by_id(conn: pymysql.Connection, doctor_id: int) -> Dict[str, Any]
     # Attach assigned specialties as a structured list
     doctor["Specialties"] = get_doctor_specialties(conn, doctor_id)
     return doctor
+
+
+def format_time_value(val: Any) -> str:
+    """Helper to convert time or timedelta to HH:MM:SS string."""
+    from datetime import timedelta, time as dt_time
+    if isinstance(val, timedelta):
+        total_seconds = int(val.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    elif isinstance(val, dt_time):
+        return val.strftime("%H:%M:%S")
+    return str(val) if val is not None else ""
+
+
+def get_doctor_schedules(
+    conn: pymysql.Connection,
+    doctor_id: int,
+    branch_id: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves weekly schedule blocks for a doctor, ordered by weekday.
+    Joins with Branch to indicate clinic practicing location.
+    """
+    query = """
+        SELECT 
+            ds.Schedule_ID,
+            ds.Doctor_ID,
+            ds.Branch_ID,
+            b.Branch_Name,
+            b.City AS Branch_City,
+            ds.Day_Of_Week,
+            ds.Start_Time,
+            ds.End_Time,
+            ROUND(TIME_TO_SEC(TIMEDIFF(ds.End_Time, ds.Start_Time)) / 60) AS Shift_Duration_Minutes,
+            ds.Availability_Status
+        FROM Doctor_Schedule ds
+        JOIN Branch b ON ds.Branch_ID = b.Branch_ID
+        WHERE ds.Doctor_ID = %s
+    """
+    params = [doctor_id]
+    if branch_id is not None:
+        query += " AND ds.Branch_ID = %s"
+        params.append(branch_id)
+
+    query += " ORDER BY FIELD(ds.Day_Of_Week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), ds.Start_Time ASC"
+
+    with conn.cursor() as cursor:
+        cursor.execute(query, tuple(params))
+        schedules = cursor.fetchall()
+
+    for s in schedules:
+        s["Start_Time_Str"] = format_time_value(s["Start_Time"])
+        s["End_Time_Str"] = format_time_value(s["End_Time"])
+
+    return schedules
+
