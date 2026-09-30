@@ -28,10 +28,13 @@ def get_categories(conn: pymysql.Connection) -> List[Dict[str, Any]]:
 def get_catalogue(
     conn: pymysql.Connection,
     search: Optional[str] = None,
-    category_id: Optional[int] = None
+    category_id: Optional[int] = None,
+    include_discontinued: bool = False
 ) -> List[Dict[str, Any]]:
     """
-    Retrieves all Active treatments joined with Treatment_Category.
+    Retrieves treatments joined with Treatment_Category.
+    When include_discontinued is False (default), only returns Treatment_Status='Active'.
+    When include_discontinued is True, returns all treatments regardless of status.
     Optionally filters by Category_ID and/or search term matching Treatment_Name or Service_Code.
     Ordered by Category_Name ASC, then Treatment_Name ASC.
     Uses raw SQL with a DictCursor.
@@ -48,9 +51,12 @@ def get_catalogue(
             t.Treatment_Status
         FROM Treatment_Catalogue t
         JOIN Treatment_Category tc ON t.Category_ID = tc.Category_ID
-        WHERE t.Treatment_Status = 'Active'
+        WHERE 1=1
     """
     params = []
+
+    if not include_discontinued:
+        query += " AND t.Treatment_Status = 'Active'"
 
     if category_id is not None:
         query += " AND t.Category_ID = %s"
