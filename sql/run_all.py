@@ -21,12 +21,12 @@ DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_NAME = os.getenv("DB_NAME", "CatMS")
-DB_SSL_MODE = os.getenv("DB_SSL_MODE", "")
+DB_USE_SSL = os.getenv("DB_USE_SSL", "false").lower() in ("true", "1", "yes")
 
 
 def get_db_connection(include_database: bool = True) -> pymysql.Connection:
     ssl_config = None
-    if "tidbcloud.com" in DB_HOST or DB_SSL_MODE:
+    if DB_USE_SSL:
         import certifi
 
         ssl_config = {"ca": certifi.where()}
