@@ -10,13 +10,14 @@ class Settings(BaseSettings):
     SERVER_HOST: str = "0.0.0.0"
     SERVER_PORT: int = 8000
 
-    # MySQL / TiDB Database Configuration (Option C: Plain PyMySQL)
-    DB_HOST: str = "gateway01.ap-southeast-1.prod.aws.tidbcloud.com"
-    DB_PORT: int = 4000
-    DB_USER: str = "4J6E1ab8gCC15PY.root"
+    # MySQL Database Configuration (Option C: Plain PyMySQL)
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 3306
+    DB_USER: str = "root"
     DB_PASSWORD: str = ""
     DB_NAME: str = "CatMS"
-    DB_SSL_MODE: str = "VERIFY_IDENTITY"
+    DB_USE_SSL: bool = False
+    DB_SSL_MODE: str = ""
 
     # Security settings
     SECRET_KEY: str = "supersecretkey_change_in_production"

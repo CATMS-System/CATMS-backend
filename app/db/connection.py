@@ -13,7 +13,7 @@ from app.core.config import settings
 def get_db_connection() -> pymysql.Connection:
     """Creates and returns a raw PyMySQL connection to the database."""
     ssl_config = None
-    if "tidbcloud.com" in settings.DB_HOST or settings.DB_SSL_MODE:
+    if settings.DB_USE_SSL:
         ssl_config = {"ca": certifi.where()}
 
     return pymysql.connect(
