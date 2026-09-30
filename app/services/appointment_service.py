@@ -208,3 +208,166 @@ def book_appointment_atomic(
         created_record = cursor.fetchone()
 
     return created_record
+
+
+def get_appointment_by_id(conn: pymysql.Connection, appointment_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a single appointment by its primary key with complete joined relations.
+    Returns None if the appointment record does not exist.
+    """
+    sql = """
+        SELECT 
+            a.Appointment_ID,
+            a.Patient_ID,
+            CONCAT(p.First_Name, ' ', p.Last_Name) AS Patient_Name,
+            p.NIC AS Patient_NIC,
+            p.Contact_Number AS Patient_Phone,
+            p.Gender AS Patient_Gender,
+            a.Doctor_ID,
+            CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
+            d.License_Number AS Doctor_License,
+            a.Branch_ID,
+            b.Branch_Name,
+            b.City AS Branch_City,
+            a.Schedule_ID,
+            a.Appointment_Date,
+            a.Start_Time,
+            a.Duration_Minutes,
+            ADDTIME(a.Start_Time, SEC_TO_TIME(a.Duration_Minutes * 60)) AS End_Time,
+            a.Appointment_Type,
+            a.Status,
+            a.Cancellation_Reason,
+            a.Reason_For_Visit,
+            a.Created_At
+        FROM Appointment a
+        JOIN Patient p ON a.Patient_ID = p.Patient_ID
+        JOIN Doctor d ON a.Doctor_ID = d.Doctor_ID
+        JOIN Staff s ON d.Doctor_ID = s.Staff_ID
+        JOIN Branch b ON a.Branch_ID = b.Branch_ID
+        WHERE a.Appointment_ID = %s
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(sql, (appointment_id,))
+        return cursor.fetchone()
+
+
+def get_appointments_by_date(
+    conn: pymysql.Connection,
+    doctor_id: Optional[int] = None,
+    branch_id: Optional[int] = None,
+    appointment_date: Optional[date] = None,
+    status: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves appointments matching multi-criteria filters (doctor, branch, date, status).
+    Orders records by Appointment_Date and Start_Time for clinic queue tracking.
+    """
+    sql = """
+        SELECT 
+            a.Appointment_ID,
+            a.Patient_ID,
+            CONCAT(p.First_Name, ' ', p.Last_Name) AS Patient_Name,
+            p.NIC AS Patient_NIC,
+            p.Contact_Number AS Patient_Phone,
+            a.Doctor_ID,
+            CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
+            a.Branch_ID,
+            b.Branch_Name,
+            a.Schedule_ID,
+            a.Appointment_Date,
+            a.Start_Time,
+            a.Duration_Minutes,
+            ADDTIME(a.Start_Time, SEC_TO_TIME(a.Duration_Minutes * 60)) AS End_Time,
+            a.Appointment_Type,
+            a.Status,
+            a.Cancellation_Reason,
+            a.Reason_For_Visit,
+            a.Created_At
+        FROM Appointment a
+        JOIN Patient p ON a.Patient_ID = p.Patient_ID
+        JOIN Doctor d ON a.Doctor_ID = d.Doctor_ID
+        JOIN Staff s ON d.Doctor_ID = s.Staff_ID
+        JOIN Branch b ON a.Branch_ID = b.Branch_ID
+    """
+    where_clauses = []
+    params = []
+
+    if doctor_id is not None:
+        where_clauses.append("a.Doctor_ID = %s")
+        params.append(doctor_id)
+
+    if branch_id is not None:
+        where_clauses.append("a.Branch_ID = %s")
+        params.append(branch_id)
+
+    if appointment_date is not None:
+        where_clauses.append("a.Appointment_Date = %s")
+        params.append(appointment_date)
+
+    if status is not None:
+        where_clauses.append("a.Status = %s")
+        params.append(status)
+
+    if where_clauses:
+        sql += " WHERE " + " AND ".join(where_clauses)
+
+    sql += " ORDER BY a.Appointment_Date ASC, a.Start_Time ASC"
+
+    with conn.cursor() as cursor:
+        cursor.execute(sql, tuple(params))
+        return cursor.fetchall()
+
+
+def get_appointment_status_counts(
+    conn: pymysql.Connection,
+    branch_id: Optional[int] = None,
+    appointment_date: Optional[date] = None,
+    doctor_id: Optional[int] = None
+) -> Dict[str, int]:
+    """
+    Aggregates appointment status metrics for daily clinic operational oversight.
+    Returns counts for Total, Scheduled, Confirmed, Completed, Cancelled, No_Show, and Walk_In.
+    """
+    sql = """
+        SELECT 
+            COUNT(*) AS Total,
+            COALESCE(SUM(CASE WHEN Status = 'Scheduled' THEN 1 ELSE 0 END), 0) AS Scheduled,
+            COALESCE(SUM(CASE WHEN Status = 'Confirmed' THEN 1 ELSE 0 END), 0) AS Confirmed,
+            COALESCE(SUM(CASE WHEN Status = 'Completed' THEN 1 ELSE 0 END), 0) AS Completed,
+            COALESCE(SUM(CASE WHEN Status = 'Cancelled' THEN 1 ELSE 0 END), 0) AS Cancelled,
+            COALESCE(SUM(CASE WHEN Status = 'No_Show' THEN 1 ELSE 0 END), 0) AS No_Show,
+            COALESCE(SUM(CASE WHEN Appointment_Type = 'Walk_In' THEN 1 ELSE 0 END), 0) AS Walk_In
+        FROM Appointment
+    """
+    where_clauses = []
+    params = []
+
+    if branch_id is not None:
+        where_clauses.append("Branch_ID = %s")
+        params.append(branch_id)
+
+    if appointment_date is not None:
+        where_clauses.append("Appointment_Date = %s")
+        params.append(appointment_date)
+
+    if doctor_id is not None:
+        where_clauses.append("Doctor_ID = %s")
+        params.append(doctor_id)
+
+    if where_clauses:
+        sql += " WHERE " + " AND ".join(where_clauses)
+
+    with conn.cursor() as cursor:
+        cursor.execute(sql, tuple(params))
+        row = cursor.fetchone()
+
+    return {
+        "Total": int(row["Total"]),
+        "Scheduled": int(row["Scheduled"]),
+        "Confirmed": int(row["Confirmed"]),
+        "Completed": int(row["Completed"]),
+        "Cancelled": int(row["Cancelled"]),
+        "No_Show": int(row["No_Show"]),
+        "Walk_In": int(row["Walk_In"]),
+    }
+
