@@ -274,6 +274,8 @@ CREATE TABLE Patient (
 
     Registration_Date DATE NOT NULL DEFAULT (CURRENT_DATE),
 
+    Updated_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
     CONSTRAINT fk_patient_account
         FOREIGN KEY (Account_ID)
         REFERENCES User_Account(Account_ID)
