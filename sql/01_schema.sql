@@ -498,7 +498,7 @@ CREATE TABLE Prescribed_Treatment (
 
     Quantity INT NOT NULL DEFAULT 1,
 
-    Billed_Unit_Price DECIMAL(10, 2) NOT NULL,
+    Billed_Unit_Price DECIMAL(10, 2) NOT NULL CHECK (Billed_Unit_Price >= 0),
 
     Instructions TEXT NULL,
 
