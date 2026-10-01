@@ -80,3 +80,12 @@ def validate_dob(v: date) -> date:
     if v.year < MIN_BIRTH_YEAR:
         raise ValueError(f"Date of birth implies an unrealistic age (before {MIN_BIRTH_YEAR})")
     return v
+
+SRI_LANKA_POSTAL_PATTERN = re.compile(r"^\d{5}$")
+
+
+def validate_postal(v: str) -> str:
+    """Sri Lankan postal codes are exactly 5 digits (e.g. '00300')."""
+    if not SRI_LANKA_POSTAL_PATTERN.match(v):
+        raise ValueError("Postal code must be exactly 5 digits")
+    return v
