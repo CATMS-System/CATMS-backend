@@ -58,3 +58,13 @@ def normalize_phone(v: str) -> str:
     if len(cleaned) > 20:  # defensive: DB column is VARCHAR(20)
         raise ValueError("Phone number too long after normalization")
     return cleaned
+
+
+
+def normalize_nic(v: str) -> str:
+    """Validates Sri Lankan NIC format and uppercases the V/X suffix, so
+    '852140938v' and '852140938V' are treated as one value."""
+    v = v.strip().upper()
+    if not re.match(r"^(\d{9}[VX]|\d{12})$", v):
+        raise ValueError("NIC must be old format (9 digits + V or X) or new 12-digit format")
+    return v
