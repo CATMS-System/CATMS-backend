@@ -526,7 +526,7 @@ CREATE TABLE Invoice (
 
     Invoice_Date DATE NOT NULL DEFAULT (CURRENT_DATE),
 
-    Billed_Consultation_Fee DECIMAL(10, 2) NOT NULL,
+    Billed_Consultation_Fee DECIMAL(10, 2) NOT NULL CHECK (Billed_Consultation_Fee >= 0),
 
     Invoice_Status ENUM(
         'Draft',
