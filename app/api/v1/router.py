@@ -25,10 +25,15 @@ def health_check(conn: pymysql.Connection = Depends(get_db)):
         "query_result": result
     }
 
+# Domain routers
+from app.api.v1.endpoints import doctors
+
+api_router.include_router(doctors.router, prefix="/doctors", tags=["Doctors"])
+api_router.include_router(doctors.specialties_router, prefix="/specialties", tags=["Specialties"])
+
 # Team members will mount their domain routers here:
 # api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 # api_router.include_router(patients.router, prefix="/patients", tags=["Patients"])
-# api_router.include_router(doctors.router, prefix="/doctors", tags=["Doctors"])
 # api_router.include_router(appointments.router, prefix="/appointments", tags=["Appointments"])
 # api_router.include_router(consultations.router, prefix="/consultations", tags=["Consultations"])
 # api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
