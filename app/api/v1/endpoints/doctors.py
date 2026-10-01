@@ -1,9 +1,11 @@
 """
 Doctor and Specialty API Endpoints (Option C: Plain PyMySQL).
 Provides RESTful HTTP routes for physician directory lookup, filtering by branch
-and medical specialty, profile detail retrieval, and medical specialty catalog.
+and medical specialty, profile detail retrieval, weekly schedule inspection,
+and dynamic available appointment slot calculation.
 """
 
+from datetime import date
 from typing import List, Optional
 import pymysql
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
@@ -13,13 +15,17 @@ from app.schemas.doctor import (
     DoctorListItemResponse,
     DoctorDetailResponse,
     SpecialtyResponse,
+    DoctorScheduleResponse,
+    AvailableSlotResponse,
 )
 from app.services.doctor_service import (
     get_all_doctors,
     get_doctor_by_id,
     get_all_specialties,
+    get_doctor_schedules,
     DoctorNotFoundError,
 )
+from app.services.appointment_service import get_doctor_available_slots
 
 # Router for /api/v1/doctors
 router = APIRouter()
@@ -111,6 +117,72 @@ def get_doctor(
     """
     try:
         return get_doctor_by_id(conn, doctor_id)
+    except DoctorNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+
+@router.get(
+    "/{doctor_id}/schedules",
+    response_model=List[DoctorScheduleResponse],
+    summary="Get weekly schedules for a doctor",
+    description="Retrieves weekly working hours and branch assignments for a doctor.",
+)
+def get_doctor_weekly_schedules(
+    doctor_id: int = Path(..., description="Unique Doctor ID", ge=1),
+    branch_id: Optional[int] = Query(default=None, description="Optional branch ID filter", ge=1),
+    conn: pymysql.Connection = Depends(get_db),
+) -> List[DoctorScheduleResponse]:
+    """
+    Retrieves doctor weekly schedule blocks with branch location and shift duration.
+    Raises 404 NOT FOUND if the doctor does not exist.
+    """
+    try:
+        get_doctor_by_id(conn, doctor_id)
+    except DoctorNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+    return get_doctor_schedules(conn, doctor_id=doctor_id, branch_id=branch_id)
+
+
+@router.get(
+    "/{doctor_id}/available-slots",
+    response_model=List[AvailableSlotResponse],
+    summary="Calculate available appointment slots for a doctor",
+    description="Computes available booking time slots for a doctor on a specific date by checking working shifts against existing bookings.",
+)
+def get_available_slots(
+    doctor_id: int = Path(..., description="Unique Doctor ID", ge=1),
+    date: date = Query(..., description="Target appointment date (YYYY-MM-DD)"),
+    duration_minutes: int = Query(
+        default=30,
+        description="Slot duration in minutes (e.g. 15, 20, 30)",
+        ge=5,
+        le=120,
+    ),
+    branch_id: Optional[int] = Query(default=None, description="Optional branch ID filter", ge=1),
+    schedule_id: Optional[int] = Query(default=None, description="Optional schedule ID filter", ge=1),
+    conn: pymysql.Connection = Depends(get_db),
+) -> List[AvailableSlotResponse]:
+    """
+    Computes available appointment slots for a doctor on a given date.
+    Excludes any slot that overlaps with an existing Scheduled, Confirmed, or Completed booking.
+    Raises 404 NOT FOUND if the doctor does not exist.
+    """
+    try:
+        return get_doctor_available_slots(
+            conn,
+            doctor_id=doctor_id,
+            appointment_date=date,
+            slot_duration_minutes=duration_minutes,
+            branch_id=branch_id,
+            schedule_id=schedule_id,
+        )
     except DoctorNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

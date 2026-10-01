@@ -5,9 +5,11 @@ Built using Option C (Plain PyMySQL).
 """
 
 from datetime import date, time, timedelta, datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Union
 import pymysql
 import pymysql.cursors
+
+from app.services.doctor_service import DoctorNotFoundError
 
 
 class AppointmentConflictError(Exception):
@@ -370,4 +372,143 @@ def get_appointment_status_counts(
         "No_Show": int(row["No_Show"]),
         "Walk_In": int(row["Walk_In"]),
     }
+
+
+def get_doctor_available_slots(
+    conn: pymysql.Connection,
+    doctor_id: int,
+    appointment_date: Union[date, str],
+    slot_duration_minutes: int = 30,
+    branch_id: Optional[int] = None,
+    schedule_id: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """
+    Computes available booking time slots for a doctor on a specific date.
+    1. Validates doctor existence (raises DoctorNotFoundError if invalid).
+    2. Identifies active schedule shifts for the doctor on that day of week (or schedule_id).
+    3. Retrieves existing active appointments (Scheduled, Confirmed, Completed) on that date.
+    4. Slices shifts into `slot_duration_minutes` blocks and filters out any slot overlapping
+       with an existing active booking.
+    """
+    if isinstance(appointment_date, str):
+        appointment_date = date.fromisoformat(appointment_date)
+
+    # 1. Verify doctor exists
+    with conn.cursor() as cur:
+        cur.execute("SELECT Doctor_ID FROM Doctor WHERE Doctor_ID = %s", (doctor_id,))
+        if not cur.fetchone():
+            raise DoctorNotFoundError(doctor_id)
+
+    day_of_week = appointment_date.strftime("%A")
+
+    # 2. Retrieve schedule shifts
+    if schedule_id is not None:
+        query = """
+            SELECT ds.Schedule_ID, ds.Doctor_ID, ds.Branch_ID, ds.Day_Of_Week,
+                   ds.Start_Time, ds.End_Time, ds.Availability_Status,
+                   b.Branch_Name, b.City AS Branch_City
+            FROM Doctor_Schedule ds
+            JOIN Branch b ON ds.Branch_ID = b.Branch_ID
+            WHERE ds.Schedule_ID = %s AND ds.Doctor_ID = %s AND ds.Availability_Status = 'Active'
+        """
+        params = [schedule_id, doctor_id]
+        with conn.cursor() as cur:
+            cur.execute(query, tuple(params))
+            schedules = cur.fetchall()
+    else:
+        query = """
+            SELECT ds.Schedule_ID, ds.Doctor_ID, ds.Branch_ID, ds.Day_Of_Week,
+                   ds.Start_Time, ds.End_Time, ds.Availability_Status,
+                   b.Branch_Name, b.City AS Branch_City
+            FROM Doctor_Schedule ds
+            JOIN Branch b ON ds.Branch_ID = b.Branch_ID
+            WHERE ds.Doctor_ID = %s AND ds.Day_Of_Week = %s AND ds.Availability_Status = 'Active'
+        """
+        params = [doctor_id, day_of_week]
+        if branch_id is not None:
+            query += " AND ds.Branch_ID = %s"
+            params.append(branch_id)
+        with conn.cursor() as cur:
+            cur.execute(query, tuple(params))
+            schedules = cur.fetchall()
+
+        # Fallback: check if existing appointments on this date link to a schedule block
+        if not schedules:
+            fallback_query = """
+                SELECT DISTINCT ds.Schedule_ID, ds.Doctor_ID, ds.Branch_ID, ds.Day_Of_Week,
+                                ds.Start_Time, ds.End_Time, ds.Availability_Status,
+                                b.Branch_Name, b.City AS Branch_City
+                FROM Doctor_Schedule ds
+                JOIN Branch b ON ds.Branch_ID = b.Branch_ID
+                JOIN Appointment a ON ds.Schedule_ID = a.Schedule_ID
+                WHERE a.Doctor_ID = %s AND a.Appointment_Date = %s
+            """
+            with conn.cursor() as cur:
+                cur.execute(fallback_query, (doctor_id, appointment_date))
+                schedules = cur.fetchall()
+
+    if not schedules:
+        return []
+
+    # 3. Retrieve existing active appointments on this date
+    appt_query = """
+        SELECT Appointment_ID, Start_Time, Duration_Minutes, Status
+        FROM Appointment
+        WHERE Doctor_ID = %s AND Appointment_Date = %s
+          AND Status IN ('Scheduled', 'Confirmed', 'Completed')
+    """
+    with conn.cursor() as cur:
+        cur.execute(appt_query, (doctor_id, appointment_date))
+        existing_appts = cur.fetchall()
+
+    def _to_time(val: Any) -> time:
+        if isinstance(val, time):
+            return val
+        if isinstance(val, timedelta):
+            total_sec = int(val.total_seconds())
+            return time((total_sec // 3600) % 24, (total_sec % 3600) // 60, total_sec % 60)
+        if isinstance(val, str):
+            parts = val.split(":")
+            return time(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
+        raise ValueError(f"Cannot convert {val} of type {type(val)} to time")
+
+    available_slots = []
+    dummy_date = date(2000, 1, 1)
+
+    for sch in schedules:
+        shift_start = _to_time(sch["Start_Time"])
+        shift_end = _to_time(sch["End_Time"])
+
+        curr_dt = datetime.combine(dummy_date, shift_start)
+        shift_end_dt = datetime.combine(dummy_date, shift_end)
+
+        while curr_dt + timedelta(minutes=slot_duration_minutes) <= shift_end_dt:
+            slot_start_time = curr_dt.time()
+            slot_end_time = (curr_dt + timedelta(minutes=slot_duration_minutes)).time()
+
+            is_occupied = False
+            for appt in existing_appts:
+                appt_start = _to_time(appt["Start_Time"])
+                appt_dur = appt["Duration_Minutes"]
+                appt_end = (datetime.combine(dummy_date, appt_start) + timedelta(minutes=appt_dur)).time()
+
+                # Overlap: slot_start < appt_end AND slot_end > appt_start
+                if (slot_start_time < appt_end) and (slot_end_time > appt_start):
+                    is_occupied = True
+                    break
+
+            if not is_occupied:
+                available_slots.append({
+                    "Start_Time": slot_start_time.strftime("%H:%M:%S"),
+                    "End_Time": slot_end_time.strftime("%H:%M:%S"),
+                    "Duration_Minutes": slot_duration_minutes,
+                    "Branch_ID": sch["Branch_ID"],
+                    "Branch_Name": sch["Branch_Name"],
+                    "Schedule_ID": sch["Schedule_ID"],
+                    "Date": appointment_date
+                })
+
+            curr_dt += timedelta(minutes=slot_duration_minutes)
+
+    return available_slots
 

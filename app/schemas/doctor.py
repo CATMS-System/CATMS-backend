@@ -4,6 +4,7 @@ Handles request validation and response serialization for physician profiles,
 assigned medical specialties, and weekly branch schedules.
 """
 
+from datetime import date
 from decimal import Decimal
 from typing import Optional, List, Any
 from pydantic import BaseModel, Field, ConfigDict
@@ -75,5 +76,17 @@ class DoctorDetailResponse(BaseModel):
     license_number: str = Field(..., alias="License_Number")
     standard_consultation_fee: Decimal = Field(..., alias="Standard_Consultation_Fee")
     specialties: List[SpecialtyResponse] = Field(default_factory=list, alias="Specialties")
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class AvailableSlotResponse(BaseModel):
+    start_time: str = Field(..., alias="Start_Time", description="Available slot start time (HH:MM:SS)")
+    end_time: str = Field(..., alias="End_Time", description="Available slot end time (HH:MM:SS)")
+    duration_minutes: int = Field(..., alias="Duration_Minutes", description="Duration of slot in minutes")
+    branch_id: int = Field(..., alias="Branch_ID", description="Clinic branch identifier")
+    branch_name: Optional[str] = Field(default=None, alias="Branch_Name", description="Clinic branch name")
+    schedule_id: Optional[int] = Field(default=None, alias="Schedule_ID", description="Associated schedule shift ID")
+    slot_date: Optional[date] = Field(default=None, alias="Date", description="Target appointment date")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
