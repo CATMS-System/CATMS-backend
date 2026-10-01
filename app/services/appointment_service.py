@@ -26,12 +26,32 @@ class AppointmentValidationError(Exception):
         super().__init__(self.message)
 
 
-def compute_end_time(start: time, duration_minutes: int) -> time:
+def compute_end_time(start: Union[time, str, timedelta], duration_minutes: int) -> time:
     """Computes end time given a starting time and duration in minutes."""
     dummy_date = date(2000, 1, 1)
-    start_dt = datetime.combine(dummy_date, start)
+    if isinstance(start, str):
+        parts = [int(p) for p in start.split(":")]
+        if len(parts) == 2:
+            start_t = time(parts[0], parts[1], 0)
+        elif len(parts) == 3:
+            start_t = time(parts[0], parts[1], parts[2])
+        else:
+            raise ValueError(f"Invalid time string format: {start}")
+    elif isinstance(start, timedelta):
+        total_seconds = int(start.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        start_t = time(hours, minutes, seconds)
+    elif isinstance(start, time):
+        start_t = start
+    else:
+        raise TypeError(f"Expected time, str, or timedelta, got {type(start)}")
+
+    start_dt = datetime.combine(dummy_date, start_t)
     end_dt = start_dt + timedelta(minutes=duration_minutes)
     return end_dt.time()
+
 
 
 def check_doctor_appointment_overlap(

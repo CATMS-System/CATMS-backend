@@ -47,6 +47,8 @@ class WalkInAppointmentCreate(BaseModel):
     reason_for_visit: str = Field(..., min_length=2, max_length=255, description="Triage reason or clinical complaint")
     duration_minutes: int = Field(default=15, gt=0, le=60, description="Estimated consultation minutes")
     triage_urgency: Optional[str] = Field(default="Normal", description="Urgency level (e.g. Normal, High, Critical)")
+    appointment_date: Optional[date] = Field(default=None, description="Optional override date; defaults to today")
+    start_time: Optional[str] = Field(default=None, description="Optional override start time (HH:MM:SS); defaults to current time")
 
     model_config = ConfigDict(populate_by_name=True)
 
