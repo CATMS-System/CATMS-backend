@@ -234,7 +234,10 @@ CREATE TABLE Doctor_Schedule (
 
     CONSTRAINT fk_sched_branch
         FOREIGN KEY (Branch_ID)
-        REFERENCES Branch(Branch_ID)
+        REFERENCES Branch(Branch_ID),
+
+    CONSTRAINT uq_doctor_schedule_slot
+        UNIQUE (Doctor_ID, Branch_ID, Day_Of_Week, Start_Time)
 );
 
 
