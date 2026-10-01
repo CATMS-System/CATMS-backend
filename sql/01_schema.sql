@@ -380,7 +380,7 @@ CREATE TABLE Treatment_Catalogue (
 
     Description TEXT NULL,
 
-    Standard_Unit_Price DECIMAL(10, 2) NOT NULL,
+    Standard_Unit_Price DECIMAL(10, 2) NOT NULL CHECK (Standard_Unit_Price > 0),
 
     Treatment_Status ENUM(
         'Active',
