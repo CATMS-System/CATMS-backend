@@ -427,7 +427,7 @@ CREATE TABLE Appointment (
 
     Start_Time TIME NOT NULL,
 
-    Duration_Minutes INT NOT NULL DEFAULT 15,
+    Duration_Minutes INT NOT NULL DEFAULT 15 CHECK (Duration_Minutes > 0),
 
     Appointment_Type ENUM(
         'Standard',
