@@ -100,3 +100,69 @@ def test_list_specialties_alias(client):
     data = response.json()
     assert isinstance(data, list)
     assert len(data) >= 5
+
+
+def test_get_doctor_schedules_success(client):
+    """Verifies GET /api/v1/doctors/{id}/schedules returns weekly shift blocks."""
+    response = client.get("/api/v1/doctors/1/schedules")
+    assert response.status_code == 200
+    schedules = response.json()
+    assert isinstance(schedules, list)
+    assert len(schedules) >= 3
+
+    first = schedules[0]
+    assert "Schedule_ID" in first
+    assert "Doctor_ID" in first
+    assert first["Doctor_ID"] == 1
+    assert "Branch_Name" in first
+    assert "Day_Of_Week" in first
+    assert "Shift_Duration_Minutes" in first
+
+
+def test_get_doctor_schedules_filter_branch(client):
+    """Verifies branch_id query param filters doctor schedules."""
+    response = client.get("/api/v1/doctors/1/schedules?branch_id=1")
+    assert response.status_code == 200
+    schedules = response.json()
+    assert all(s["Branch_ID"] == 1 for s in schedules)
+
+
+def test_get_doctor_schedules_not_found(client):
+    """Verifies 404 response for non-existent doctor schedule query."""
+    response = client.get("/api/v1/doctors/999999/schedules")
+    assert response.status_code == 404
+    assert "detail" in response.json()
+
+
+def test_get_doctor_available_slots_success(client):
+    """
+    Verifies GET /api/v1/doctors/{id}/available-slots computes available booking intervals
+    and correctly excludes occupied appointment slots (e.g. 09:00:00 on 2026-08-23).
+    """
+    response = client.get("/api/v1/doctors/1/available-slots?date=2026-08-23&duration_minutes=30")
+    assert response.status_code == 200
+    slots = response.json()
+    assert isinstance(slots, list)
+    assert len(slots) > 0
+
+    # Ensure all slots have correct structure
+    for slot in slots:
+        assert "Start_Time" in slot
+        assert "End_Time" in slot
+        assert "Duration_Minutes" in slot
+        assert slot["Duration_Minutes"] == 30
+        assert "Branch_Name" in slot
+
+    # Confirm occupied slot 09:00:00 is EXCLUDED
+    occupied_found = any(s["Start_Time"] == "09:00:00" for s in slots)
+    assert not occupied_found, "Slot 09:00:00 is occupied by Appointment #1 and must be excluded!"
+
+    # Confirm adjacent slot 09:30:00 is available
+    assert any(s["Start_Time"] == "09:30:00" for s in slots)
+
+
+def test_get_doctor_available_slots_not_found(client):
+    """Verifies 404 response when querying available slots for non-existent doctor."""
+    response = client.get("/api/v1/doctors/999999/available-slots?date=2026-08-23")
+    assert response.status_code == 404
+    assert "detail" in response.json()
