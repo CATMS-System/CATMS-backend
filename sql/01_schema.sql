@@ -332,7 +332,7 @@ CREATE TABLE Insurance_Policy (
     Start_Date DATE NOT NULL,
     End_Date DATE NOT NULL,
 
-    Default_Coverage_Percentage DECIMAL(5, 2) NOT NULL,
+    Default_Coverage_Percentage DECIMAL(5, 2) NOT NULL CHECK (Default_Coverage_Percentage BETWEEN 0 AND 100),
 
     Policy_Status ENUM(
         'Active',
