@@ -81,7 +81,7 @@ CREATE TABLE Branch (
     Postal_Code VARCHAR(20) NOT NULL,
 
     Contact_Number VARCHAR(20) NOT NULL,
-    Email VARCHAR(100) NOT NULL
+    Email VARCHAR(100) UNIQUE NOT NULL
 );
 
 
@@ -127,7 +127,7 @@ CREATE TABLE Staff (
     Job_Title VARCHAR(100) NOT NULL,
 
     Contact_Number VARCHAR(20) NOT NULL,
-    Email VARCHAR(100) NOT NULL,
+    Email VARCHAR(100) UNIQUE NOT NULL,
 
     Employment_Status ENUM(
         'Active',
@@ -306,7 +306,7 @@ CREATE TABLE Insurance_Provider (
     Provider_Name VARCHAR(100) UNIQUE NOT NULL,
 
     Contact_Number VARCHAR(20) NOT NULL,
-    Email VARCHAR(100) NOT NULL,
+    Email VARCHAR(100) UNIQUE NOT NULL,
 
     Street_Address VARCHAR(150) NOT NULL,
     City VARCHAR(50) NOT NULL,
