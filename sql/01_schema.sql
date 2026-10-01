@@ -464,7 +464,10 @@ CREATE TABLE Appointment (
 
     CONSTRAINT fk_appt_schedule
         FOREIGN KEY (Schedule_ID)
-        REFERENCES Doctor_Schedule(Schedule_ID)
+        REFERENCES Doctor_Schedule(Schedule_ID),
+    
+    CONSTRAINT chk_cancellation_reason
+        CHECK (Status != 'Cancelled' OR Cancellation_Reason IS NOT NULL)
 );
 
 CREATE INDEX idx_appointment_doctor_date ON Appointment(Doctor_ID, Appointment_Date);
