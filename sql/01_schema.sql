@@ -164,7 +164,7 @@ CREATE TABLE Doctor (
 
     License_Number VARCHAR(50) UNIQUE NOT NULL,
 
-    Standard_Consultation_Fee DECIMAL(10, 2) NOT NULL,
+    Standard_Consultation_Fee DECIMAL(10, 2) NOT NULL CHECK (Standard_Consultation_Fee > 0),
 
     CONSTRAINT fk_doctor_staff
         FOREIGN KEY (Doctor_ID)
