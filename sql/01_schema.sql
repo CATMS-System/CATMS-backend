@@ -74,14 +74,14 @@ CREATE TABLE Branch (
 
     Manager_Staff_ID INT NULL,
 
-    Branch_Name VARCHAR(100) NOT NULL,
+    Branch_Name VARCHAR(100) UNIQUE NOT NULL,
     Street_Address VARCHAR(150) NOT NULL,
     City VARCHAR(50) NOT NULL,
     State_Province VARCHAR(50) NOT NULL,
     Postal_Code VARCHAR(20) NOT NULL,
 
     Contact_Number VARCHAR(20) NOT NULL,
-    Email VARCHAR(100) NOT NULL
+    Email VARCHAR(100) UNIQUE NOT NULL
 );
 
 
@@ -127,7 +127,7 @@ CREATE TABLE Staff (
     Job_Title VARCHAR(100) NOT NULL,
 
     Contact_Number VARCHAR(20) NOT NULL,
-    Email VARCHAR(100) NOT NULL,
+    Email VARCHAR(100) UNIQUE NOT NULL,
 
     Employment_Status ENUM(
         'Active',
@@ -164,7 +164,7 @@ CREATE TABLE Doctor (
 
     License_Number VARCHAR(50) UNIQUE NOT NULL,
 
-    Standard_Consultation_Fee DECIMAL(10, 2) NOT NULL,
+    Standard_Consultation_Fee DECIMAL(10, 2) NOT NULL CHECK (Standard_Consultation_Fee > 0),
 
     CONSTRAINT fk_doctor_staff
         FOREIGN KEY (Doctor_ID)
@@ -234,7 +234,10 @@ CREATE TABLE Doctor_Schedule (
 
     CONSTRAINT fk_sched_branch
         FOREIGN KEY (Branch_ID)
-        REFERENCES Branch(Branch_ID)
+        REFERENCES Branch(Branch_ID),
+
+    CONSTRAINT uq_doctor_schedule_slot
+        UNIQUE (Doctor_ID, Branch_ID, Day_Of_Week, Start_Time)
 );
 
 
@@ -260,7 +263,7 @@ CREATE TABLE Patient (
 
     NIC VARCHAR(20) UNIQUE NOT NULL,
 
-    Contact_Number VARCHAR(20) UNIQUE NOT NULL,
+    Contact_Number VARCHAR(20) NOT NULL,
 
     Email VARCHAR(100) NULL,
 
@@ -270,6 +273,8 @@ CREATE TABLE Patient (
     Postal_Code VARCHAR(20) NOT NULL,
 
     Registration_Date DATE NOT NULL DEFAULT (CURRENT_DATE),
+
+    Updated_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_patient_account
         FOREIGN KEY (Account_ID)
@@ -303,10 +308,10 @@ CREATE TABLE Emergency_Contact (
 CREATE TABLE Insurance_Provider (
     Provider_ID INT PRIMARY KEY AUTO_INCREMENT,
 
-    Provider_Name VARCHAR(100) NOT NULL,
+    Provider_Name VARCHAR(100) UNIQUE NOT NULL,
 
     Contact_Number VARCHAR(20) NOT NULL,
-    Email VARCHAR(100) NOT NULL,
+    Email VARCHAR(100) UNIQUE NOT NULL,
 
     Street_Address VARCHAR(150) NOT NULL,
     City VARCHAR(50) NOT NULL,
@@ -321,7 +326,7 @@ CREATE TABLE Insurance_Policy (
     Patient_ID INT NOT NULL,
     Provider_ID INT NOT NULL,
 
-    Policy_Number VARCHAR(50) UNIQUE NOT NULL,
+    Policy_Number VARCHAR(50) NOT NULL,
 
     Policy_Type ENUM(
         'Comprehensive',
@@ -332,7 +337,7 @@ CREATE TABLE Insurance_Policy (
     Start_Date DATE NOT NULL,
     End_Date DATE NOT NULL,
 
-    Default_Coverage_Percentage DECIMAL(5, 2) NOT NULL,
+    Default_Coverage_Percentage DECIMAL(5, 2) NOT NULL CHECK (Default_Coverage_Percentage BETWEEN 0 AND 100),
 
     Policy_Status ENUM(
         'Active',
@@ -349,7 +354,10 @@ CREATE TABLE Insurance_Policy (
 
     CONSTRAINT fk_policy_provider
         FOREIGN KEY (Provider_ID)
-        REFERENCES Insurance_Provider(Provider_ID)
+        REFERENCES Insurance_Provider(Provider_ID),
+
+    CONSTRAINT uq_policy_provider_number
+        UNIQUE (Provider_ID, Policy_Number)
 );
 
 
@@ -377,7 +385,7 @@ CREATE TABLE Treatment_Catalogue (
 
     Description TEXT NULL,
 
-    Standard_Unit_Price DECIMAL(10, 2) NOT NULL,
+    Standard_Unit_Price DECIMAL(10, 2) NOT NULL CHECK (Standard_Unit_Price > 0),
 
     Treatment_Status ENUM(
         'Active',
@@ -394,7 +402,7 @@ CREATE TABLE Treatment_Policy_Eligibility (
     Policy_ID INT NOT NULL,
     Treatment_ID INT NOT NULL,
 
-    Covered_Percentage DECIMAL(5, 2) NOT NULL,
+    Covered_Percentage DECIMAL(5, 2) NOT NULL CHECK (Covered_Percentage BETWEEN 0 AND 100),
 
     Coverage_Limit DECIMAL(10, 2) NOT NULL,
 
@@ -424,7 +432,7 @@ CREATE TABLE Appointment (
 
     Start_Time TIME NOT NULL,
 
-    Duration_Minutes INT NOT NULL DEFAULT 15,
+    Duration_Minutes INT NOT NULL DEFAULT 15 CHECK (Duration_Minutes > 0),
 
     Appointment_Type ENUM(
         'Standard',
@@ -461,9 +469,13 @@ CREATE TABLE Appointment (
 
     CONSTRAINT fk_appt_schedule
         FOREIGN KEY (Schedule_ID)
-        REFERENCES Doctor_Schedule(Schedule_ID)
+        REFERENCES Doctor_Schedule(Schedule_ID),
+    
+    CONSTRAINT chk_cancellation_reason
+        CHECK (Status != 'Cancelled' OR Cancellation_Reason IS NOT NULL)
 );
 
+CREATE INDEX idx_appointment_doctor_date ON Appointment(Doctor_ID, Appointment_Date);
 
 CREATE TABLE Consultation (
     Consultation_ID INT PRIMARY KEY AUTO_INCREMENT,
@@ -482,7 +494,10 @@ CREATE TABLE Consultation (
 
     CONSTRAINT fk_consult_appt
         FOREIGN KEY (Appointment_ID)
-        REFERENCES Appointment(Appointment_ID)
+        REFERENCES Appointment(Appointment_ID),
+    
+    CONSTRAINT chk_follow_up_after_consultation
+        CHECK (Follow_Up_Date IS NULL OR Follow_Up_Date >= Consultation_Date)
 );
 
 
@@ -494,7 +509,7 @@ CREATE TABLE Prescribed_Treatment (
 
     Quantity INT NOT NULL DEFAULT 1,
 
-    Billed_Unit_Price DECIMAL(10, 2) NOT NULL,
+    Billed_Unit_Price DECIMAL(10, 2) NOT NULL CHECK (Billed_Unit_Price >= 0),
 
     Instructions TEXT NULL,
 
@@ -522,7 +537,7 @@ CREATE TABLE Invoice (
 
     Invoice_Date DATE NOT NULL DEFAULT (CURRENT_DATE),
 
-    Billed_Consultation_Fee DECIMAL(10, 2) NOT NULL,
+    Billed_Consultation_Fee DECIMAL(10, 2) NOT NULL CHECK (Billed_Consultation_Fee >= 0),
 
     Invoice_Status ENUM(
         'Draft',
@@ -566,7 +581,16 @@ CREATE TABLE Insurance_Claim (
 
     CONSTRAINT fk_claim_policy
         FOREIGN KEY (Policy_ID)
-        REFERENCES Insurance_Policy(Policy_ID)
+        REFERENCES Insurance_Policy(Policy_ID),
+    
+    CONSTRAINT chk_claim_amount
+        CHECK (Claimed_Amount > 0),
+
+    CONSTRAINT chk_approved_not_exceed_claimed
+        CHECK (Approved_Amount <= Claimed_Amount),
+
+    CONSTRAINT chk_settlement_date
+        CHECK (Claim_Status != 'Settled' OR Settlement_Date IS NOT NULL)
 );
 
 
