@@ -1,7 +1,12 @@
 from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional, List
-from app.models.organization import EmploymentStatusEnum
+import enum
 
+class EmploymentStatusEnum(str, enum.Enum):
+    Active = "Active"
+    On_Leave = "On_Leave"
+    Resigned = "Resigned"
+    Terminated = "Terminated"
 # --- Branch Schemas ---
 class BranchBase(BaseModel):
     Branch_Name: str

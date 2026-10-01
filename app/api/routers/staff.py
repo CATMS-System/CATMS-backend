@@ -4,7 +4,7 @@ from typing import List, Optional
 from app.db.connection import get_db
 from app.schemas.organization import StaffCreate, StaffResponse
 from app.api.deps import get_current_user, require_roles
-from app.models.user import UserAccount, SystemRoleEnum
+from app.schemas.user import UserAccount, SystemRoleEnum
 
 router = APIRouter()
 

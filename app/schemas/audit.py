@@ -1,8 +1,12 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, Any, Dict
 from datetime import datetime
-from app.models.audit import ActionTypeEnum
+import enum
 
+class ActionTypeEnum(str, enum.Enum):
+    INSERT = "INSERT"
+    UPDATE = "UPDATE"
+    DELETE = "DELETE"
 class AuditLogResponse(BaseModel):
     Audit_ID: int
     Account_ID: int

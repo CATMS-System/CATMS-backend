@@ -1,7 +1,28 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
-from app.models.user import SystemRoleEnum, AccountStatusEnum
+import enum
+
+class SystemRoleEnum(str, enum.Enum):
+    Admin = "Admin"
+    Branch_Manager = "Branch_Manager"
+    Doctor = "Doctor"
+    Receptionist = "Receptionist"
+    Billing_Staff = "Billing_Staff"
+    Patient = "Patient"
+
+class AccountStatusEnum(str, enum.Enum):
+    Active = "Active"
+    Suspended = "Suspended"
+    Deactivated = "Deactivated"
+
+class UserAccount(BaseModel):
+    Account_ID: int
+    Username: str
+    Password_Hash: str
+    System_Role: SystemRoleEnum
+    Account_Status: AccountStatusEnum
+    Last_Login_At: Optional[datetime] = None
 
 # Base properties for read/write
 class UserBase(BaseModel):

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 import pymysql
 from app.db.connection import get_db
-from app.models.user import UserAccount
+from app.schemas.user import UserAccount
 from app.schemas.user import Token, UserResponse
 from app.core.security import verify_password, create_access_token
 from app.api.deps import get_current_user

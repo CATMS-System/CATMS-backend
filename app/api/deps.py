@@ -4,7 +4,7 @@ from jose import jwt, JWTError
 from app.core.security import oauth2_scheme
 from app.core.config import settings
 from app.db.connection import get_db
-from app.models.user import UserAccount, SystemRoleEnum
+from app.schemas.user import UserAccount, SystemRoleEnum
 from app.schemas.user import TokenPayload
 
 __all__ = ["get_db", "get_current_user", "require_roles"]

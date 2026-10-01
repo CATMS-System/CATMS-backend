@@ -4,7 +4,7 @@ from typing import List
 from app.db.connection import get_db
 from app.schemas.organization import BranchCreate, BranchResponse
 from app.api.deps import require_roles
-from app.models.user import UserAccount, SystemRoleEnum
+from app.schemas.user import UserAccount, SystemRoleEnum
 
 router = APIRouter()
 
