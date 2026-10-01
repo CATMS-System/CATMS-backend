@@ -303,7 +303,7 @@ CREATE TABLE Emergency_Contact (
 CREATE TABLE Insurance_Provider (
     Provider_ID INT PRIMARY KEY AUTO_INCREMENT,
 
-    Provider_Name VARCHAR(100) NOT NULL,
+    Provider_Name VARCHAR(100) UNIQUE NOT NULL,
 
     Contact_Number VARCHAR(20) NOT NULL,
     Email VARCHAR(100) NOT NULL,
