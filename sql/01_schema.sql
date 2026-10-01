@@ -397,7 +397,7 @@ CREATE TABLE Treatment_Policy_Eligibility (
     Policy_ID INT NOT NULL,
     Treatment_ID INT NOT NULL,
 
-    Covered_Percentage DECIMAL(5, 2) NOT NULL,
+    Covered_Percentage DECIMAL(5, 2) NOT NULL CHECK (Covered_Percentage BETWEEN 0 AND 100),
 
     Coverage_Limit DECIMAL(10, 2) NOT NULL,
 
