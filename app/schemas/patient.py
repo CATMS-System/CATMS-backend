@@ -68,3 +68,15 @@ def normalize_nic(v: str) -> str:
     if not re.match(r"^(\d{9}[VX]|\d{12})$", v):
         raise ValueError("NIC must be old format (9 digits + V or X) or new 12-digit format")
     return v
+
+MIN_BIRTH_YEAR = date.today().year - 120
+
+
+def validate_dob(v: date) -> date:
+    """Rejects future dates and ages implying over 120 years — almost
+    always a typo (e.g. 1870 instead of 1990), not a real patient."""
+    if v > date.today():
+        raise ValueError("Date of birth cannot be in the future")
+    if v.year < MIN_BIRTH_YEAR:
+        raise ValueError(f"Date of birth implies an unrealistic age (before {MIN_BIRTH_YEAR})")
+    return v
