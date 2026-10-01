@@ -467,6 +467,7 @@ CREATE TABLE Appointment (
         REFERENCES Doctor_Schedule(Schedule_ID)
 );
 
+CREATE INDEX idx_appointment_doctor_date ON Appointment(Doctor_ID, Appointment_Date);
 
 CREATE TABLE Consultation (
     Consultation_ID INT PRIMARY KEY AUTO_INCREMENT,
