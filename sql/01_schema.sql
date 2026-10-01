@@ -74,7 +74,7 @@ CREATE TABLE Branch (
 
     Manager_Staff_ID INT NULL,
 
-    Branch_Name VARCHAR(100) NOT NULL,
+    Branch_Name VARCHAR(100) UNIQUE NOT NULL,
     Street_Address VARCHAR(150) NOT NULL,
     City VARCHAR(50) NOT NULL,
     State_Province VARCHAR(50) NOT NULL,
