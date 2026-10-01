@@ -492,7 +492,10 @@ CREATE TABLE Consultation (
 
     CONSTRAINT fk_consult_appt
         FOREIGN KEY (Appointment_ID)
-        REFERENCES Appointment(Appointment_ID)
+        REFERENCES Appointment(Appointment_ID),
+    
+    CONSTRAINT chk_follow_up_after_consultation
+        CHECK (Follow_Up_Date IS NULL OR Follow_Up_Date >= Consultation_Date)
 );
 
 
