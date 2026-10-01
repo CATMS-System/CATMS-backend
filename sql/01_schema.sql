@@ -570,7 +570,16 @@ CREATE TABLE Insurance_Claim (
 
     CONSTRAINT fk_claim_policy
         FOREIGN KEY (Policy_ID)
-        REFERENCES Insurance_Policy(Policy_ID)
+        REFERENCES Insurance_Policy(Policy_ID),
+    
+    CONSTRAINT chk_claim_amount
+        CHECK (Claimed_Amount > 0),
+
+    CONSTRAINT chk_approved_not_exceed_claimed
+        CHECK (Approved_Amount <= Claimed_Amount),
+
+    CONSTRAINT chk_settlement_date
+        CHECK (Claim_Status != 'Settled' OR Settlement_Date IS NOT NULL)
 );
 
 
