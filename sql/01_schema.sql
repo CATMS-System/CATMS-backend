@@ -321,7 +321,7 @@ CREATE TABLE Insurance_Policy (
     Patient_ID INT NOT NULL,
     Provider_ID INT NOT NULL,
 
-    Policy_Number VARCHAR(50) UNIQUE NOT NULL,
+    Policy_Number VARCHAR(50) NOT NULL,
 
     Policy_Type ENUM(
         'Comprehensive',
@@ -349,7 +349,10 @@ CREATE TABLE Insurance_Policy (
 
     CONSTRAINT fk_policy_provider
         FOREIGN KEY (Provider_ID)
-        REFERENCES Insurance_Provider(Provider_ID)
+        REFERENCES Insurance_Provider(Provider_ID),
+
+    CONSTRAINT uq_policy_provider_number
+        UNIQUE (Provider_ID, Policy_Number)
 );
 
 
