@@ -260,7 +260,7 @@ CREATE TABLE Patient (
 
     NIC VARCHAR(20) UNIQUE NOT NULL,
 
-    Contact_Number VARCHAR(20) UNIQUE NOT NULL,
+    Contact_Number VARCHAR(20) NOT NULL,
 
     Email VARCHAR(100) NULL,
 
