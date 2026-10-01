@@ -89,3 +89,14 @@ def validate_postal(v: str) -> str:
     if not SRI_LANKA_POSTAL_PATTERN.match(v):
         raise ValueError("Postal code must be exactly 5 digits")
     return v
+
+MIN_POLICY_YEAR = 2000  # sanity floor — catches typos like "202" or "1926"
+MAX_POLICY_YEAR = date.today().year + 50  # sanity ceiling on end_date typos
+
+def validate_policy_year(v: date, field_name: str) -> date:
+    """Catches obvious typo years in insurance policy dates."""
+    if v.year < MIN_POLICY_YEAR:
+        raise ValueError(f"{field_name} year looks like a typo (before {MIN_POLICY_YEAR})")
+    if v.year > MAX_POLICY_YEAR:
+        raise ValueError(f"{field_name} year looks like a typo (after {MAX_POLICY_YEAR})")
+    return v
