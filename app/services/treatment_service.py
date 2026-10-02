@@ -29,18 +29,21 @@ def get_catalogue(
     conn: pymysql.Connection,
     search: Optional[str] = None,
     category_id: Optional[int] = None,
-    include_discontinued: bool = False
+    include_discontinued: bool = False,
+    policy_id: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """
     Retrieves treatments joined with Treatment_Category.
+    When policy_id is provided, LEFT JOINs Treatment_Policy_Eligibility to include
+    Covered_Percentage and Coverage_Limit.
     When include_discontinued is False (default), only returns Treatment_Status='Active'.
     When include_discontinued is True, returns all treatments regardless of status.
     Optionally filters by Category_ID and/or search term matching Treatment_Name or Service_Code.
     Ordered by Category_Name ASC, then Treatment_Name ASC.
     Uses raw SQL with a DictCursor.
     """
-    query = """
-        SELECT 
+    if policy_id is not None:
+        select_fields = """
             t.Treatment_ID,
             t.Category_ID,
             tc.Category_Name,
@@ -48,12 +51,41 @@ def get_catalogue(
             t.Treatment_Name,
             t.Description,
             t.Standard_Unit_Price,
-            t.Treatment_Status
+            t.Treatment_Status,
+            tpe.Covered_Percentage,
+            tpe.Coverage_Limit
+        """
+        join_clause = """
+            JOIN Treatment_Category tc ON t.Category_ID = tc.Category_ID
+            LEFT JOIN Treatment_Policy_Eligibility tpe 
+                ON (tpe.Policy_ID = %s AND tpe.Treatment_ID = t.Treatment_ID)
+        """
+        params = [policy_id]
+    else:
+        select_fields = """
+            t.Treatment_ID,
+            t.Category_ID,
+            tc.Category_Name,
+            t.Service_Code,
+            t.Treatment_Name,
+            t.Description,
+            t.Standard_Unit_Price,
+            t.Treatment_Status,
+            NULL AS Covered_Percentage,
+            NULL AS Coverage_Limit
+        """
+        join_clause = """
+            JOIN Treatment_Category tc ON t.Category_ID = tc.Category_ID
+        """
+        params = []
+
+    query = f"""
+        SELECT 
+            {select_fields}
         FROM Treatment_Catalogue t
-        JOIN Treatment_Category tc ON t.Category_ID = tc.Category_ID
+        {join_clause}
         WHERE 1=1
     """
-    params = []
 
     if not include_discontinued:
         query += " AND t.Treatment_Status = 'Active'"

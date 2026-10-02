@@ -30,10 +30,12 @@ def read_treatment_catalogue(
     search: Optional[str] = Query(None, description="Search term for treatment name or service code"),
     category_id: Optional[int] = Query(None, description="Filter treatments by category ID"),
     include_discontinued: bool = Query(False, description="Include discontinued treatments in catalogue"),
+    policy_id: Optional[int] = Query(None, description="Insurance policy ID for coverage eligibility calculation"),
     conn: pymysql.Connection = Depends(get_db)
 ) -> List[TreatmentOut]:
     """
     Retrieve all treatments from the catalogue joined with their category.
+    When policy_id is provided, includes insurance covered_percentage and coverage_limit.
     When include_discontinued is False (default), only Active treatments are returned.
     When include_discontinued is True, all treatments are returned regardless of status.
     Optionally filter by Category_ID and/or LIKE on Treatment_Name or Service_Code.
@@ -43,7 +45,8 @@ def read_treatment_catalogue(
         conn,
         search=search,
         category_id=category_id,
-        include_discontinued=include_discontinued
+        include_discontinued=include_discontinued,
+        policy_id=policy_id
     )
     return [
         TreatmentOut(
@@ -55,6 +58,8 @@ def read_treatment_catalogue(
             description=t.get("description", t.get("Description")),
             standard_unit_price=t.get("standard_unit_price", t.get("Standard_Unit_Price")),
             treatment_status=t.get("treatment_status", t.get("Treatment_Status")),
+            covered_percentage=t.get("covered_percentage", t.get("Covered_Percentage")),
+            coverage_limit=t.get("coverage_limit", t.get("Coverage_Limit")),
         )
         for t in treatments
     ]

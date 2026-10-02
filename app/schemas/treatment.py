@@ -20,5 +20,7 @@ class TreatmentOut(BaseModel):
     description: Optional[str] = None
     standard_unit_price: Decimal
     treatment_status: str
+    covered_percentage: Optional[Decimal] = None
+    coverage_limit: Optional[Decimal] = None
 
     model_config = ConfigDict(from_attributes=True)
