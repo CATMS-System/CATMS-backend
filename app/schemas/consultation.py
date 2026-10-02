@@ -1,13 +1,18 @@
 """
 Pydantic schemas for Clinical Consultations domain (Member 4).
-Includes request schemas for recording clinical notes, patient vitals,
-and prescribing itemized treatments.
+Includes request and response models for recording clinical notes, patient vitals,
+prescribing itemized treatments, and querying consultation history.
 """
 
 from datetime import date
-from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from decimal import Decimal
+from typing import Any, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+
+# ==============================================================================
+# Request Schemas
+# ==============================================================================
 
 class VitalsIn(BaseModel):
     """Patient vital signs recorded during consultation."""
@@ -54,3 +59,62 @@ class ConsultationCreate(BaseModel):
         if v is not None and v < date.today():
             raise ValueError("Follow-up date must not be in the past")
         return v
+
+
+# ==============================================================================
+# Response Schemas
+# ==============================================================================
+
+class PrescribedItemOut(BaseModel):
+    """Serialized prescribed treatment item returned from consultation query."""
+    prescription_item_id: int
+    treatment_id: int
+    service_code: str
+    treatment_name: str
+    quantity: int
+    billed_unit_price: Decimal
+    line_total: Optional[Decimal] = None
+    instructions: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def compute_line_total(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if data.get("line_total") is None and data.get("Line_Total") is None:
+                qty = data.get("quantity", data.get("Quantity"))
+                price = data.get("billed_unit_price", data.get("Billed_Unit_Price"))
+                if qty is not None and price is not None:
+                    data["line_total"] = Decimal(str(qty)) * Decimal(str(price))
+        return data
+
+
+class ConsultationOut(BaseModel):
+    """Detailed consultation response with patient/doctor details, items, and billing link."""
+    consultation_id: int
+    appointment_id: int
+    consultation_date: date
+    diagnosis: str
+    clinical_notes: Optional[str] = None
+    doctor_notes: Optional[str] = None
+    follow_up_date: Optional[date] = None
+    patient_name: str
+    doctor_name: str
+    vitals: Optional[VitalsIn] = None
+    items: List[PrescribedItemOut] = Field(default_factory=list)
+    invoice_id: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class ConsultationHistoryItem(BaseModel):
+    """Compact consultation history card for patient medical timeline."""
+    consultation_id: int
+    consultation_date: date
+    diagnosis: str
+    doctor_name: str
+    follow_up_date: Optional[date] = None
+    item_count: int = 0
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
