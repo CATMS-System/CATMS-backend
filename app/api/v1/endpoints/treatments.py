@@ -41,12 +41,18 @@ def read_treatment_catalogue(
     Optionally filter by Category_ID and/or LIKE on Treatment_Name or Service_Code.
     Ordered by category name, then treatment name.
     """
+    # Safe parameter resolution for both FastAPI DI and direct Python function calls
+    search_val = search if isinstance(search, str) else None
+    category_id_val = category_id if isinstance(category_id, int) else None
+    include_discontinued_val = include_discontinued if isinstance(include_discontinued, bool) else False
+    policy_id_val = policy_id if isinstance(policy_id, int) else None
+
     treatments = get_catalogue(
         conn,
-        search=search,
-        category_id=category_id,
-        include_discontinued=include_discontinued,
-        policy_id=policy_id
+        search=search_val,
+        category_id=category_id_val,
+        include_discontinued=include_discontinued_val,
+        policy_id=policy_id_val
     )
     return [
         TreatmentOut(
