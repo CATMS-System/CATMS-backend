@@ -8,7 +8,7 @@ from app.schemas.user import UserAccount, SystemRoleEnum
 
 router = APIRouter()
 
-@router.get("/", response_model=List[BranchResponse])
+@router.get("", response_model=List[BranchResponse])
 def get_branches(skip: int = 0, limit: int = 100, db: pymysql.Connection = Depends(get_db)):
     """Retrieve all clinic branches (Option C: PyMySQL)."""
     with db.cursor() as cursor:
@@ -16,7 +16,7 @@ def get_branches(skip: int = 0, limit: int = 100, db: pymysql.Connection = Depen
         result = cursor.fetchall()
     return [BranchResponse(**row) for row in result]
 
-@router.post("/", response_model=BranchResponse)
+@router.post("", response_model=BranchResponse)
 def create_branch(
     branch_in: BranchCreate, 
     db: pymysql.Connection = Depends(get_db),

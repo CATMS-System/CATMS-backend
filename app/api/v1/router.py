@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 import pymysql
 from app.api.deps import get_db
-from app.api.routers import auth, branches, staff, audit
+from app.api.v1.endpoints import auth, branches, staff, audit
 
 api_router = APIRouter()
 

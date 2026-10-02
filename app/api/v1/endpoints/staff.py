@@ -8,7 +8,7 @@ from app.schemas.user import UserAccount, SystemRoleEnum
 
 router = APIRouter()
 
-@router.get("/", response_model=List[StaffResponse])
+@router.get("", response_model=List[StaffResponse])
 def get_staff(
     branch_id: Optional[int] = None,
     skip: int = 0, 
@@ -32,7 +32,7 @@ def get_staff(
         
     return [StaffResponse(**row) for row in result]
 
-@router.post("/", response_model=StaffResponse)
+@router.post("", response_model=StaffResponse)
 def create_staff(
     staff_in: StaffCreate, 
     db: pymysql.Connection = Depends(get_db),

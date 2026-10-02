@@ -8,7 +8,7 @@ from app.schemas.user import UserAccount, SystemRoleEnum
 
 router = APIRouter()
 
-@router.get("/", response_model=List[AuditLogResponse])
+@router.get("", response_model=List[AuditLogResponse])
 def get_audit_logs(
     table_name: Optional[str] = None,
     skip: int = 0, 
