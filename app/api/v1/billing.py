@@ -1,0 +1,118 @@
+from fastapi import APIRouter, Depends, HTTPException
+from app.schemas.billing import (
+    PaymentCreate,
+    ClaimCreate,
+    ClaimStatusUpdate,
+)
+import pymysql
+
+from app.api.deps import get_db
+from app.repositories.invoice_repository import InvoiceRepository
+from app.services.billing_service import BillingService
+
+
+router = APIRouter()
+
+
+
+
+@router.get("/invoices/{invoice_id}")
+def get_invoice(
+    invoice_id: int,
+    db: pymysql.Connection = Depends(get_db)
+):
+    invoice_repository = InvoiceRepository(db)
+    billing_service = BillingService(db)
+
+    invoice = invoice_repository.get_by_id(invoice_id)
+
+    if invoice is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Invoice not found."
+        )
+
+    total_bill = billing_service.calculate_total_bill(
+        invoice["Consultation_ID"]
+    )
+
+    return {
+        "invoice": invoice,
+        "total_bill": total_bill
+    }
+
+
+@router.post("/payments")
+def record_payment(
+    payment_data: PaymentCreate,
+    db: pymysql.Connection = Depends(get_db)
+):
+    billing_service = BillingService(db)
+
+    try:
+        result = billing_service.record_payment(
+            invoice_id=payment_data.invoice_id,
+            amount=payment_data.amount,
+            payment_method=payment_data.payment_method,
+            transaction_reference=payment_data.transaction_reference
+        )
+
+        return result
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+
+
+
+
+
+@router.post("/claims")
+def submit_insurance_claim(
+    claim_data: ClaimCreate,
+    db: pymysql.Connection = Depends(get_db)
+):
+    billing_service = BillingService(db)
+
+    try:
+        claim = billing_service.submit_insurance_claim(
+            invoice_id=claim_data.invoice_id,
+            policy_id=claim_data.policy_id,
+            claimed_amount=claim_data.claimed_amount
+        )
+
+        return claim
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+
+
+@router.patch("/claims/{claim_id}/status")
+def update_claim_status(
+    claim_id: int,
+    status_data: ClaimStatusUpdate,
+    db: pymysql.Connection = Depends(get_db)
+):
+    billing_service = BillingService(db)
+
+    try:
+        claim = billing_service.update_claim_status(
+            claim_id=claim_id,
+            new_status=status_data.new_status,
+            approved_amount=status_data.approved_amount
+        )
+
+        return claim
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
