@@ -13,19 +13,26 @@ from app.api.deps import get_db
 from app.schemas.appointment import (
     AppointmentCreate,
     WalkInAppointmentCreate,
+    AppointmentReschedule,
+    AppointmentCancel,
     AppointmentResponse,
     AppointmentStatusCountsResponse,
+    QueueItemResponse,
 )
 from app.services.appointment_service import (
     book_appointment_atomic,
     get_appointment_by_id,
     get_appointments_by_date,
     get_appointment_status_counts,
+    reschedule_appointment,
+    cancel_appointment,
+    get_daily_queue,
     AppointmentConflictError,
     AppointmentValidationError,
 )
 
 router = APIRouter()
+
 
 
 @router.post(
@@ -177,6 +184,27 @@ def get_status_counts(
 
 
 @router.get(
+    "/queue",
+    response_model=List[QueueItemResponse],
+    summary="Get live clinic waiting queue",
+    description="Retrieves the real-time active patient queue for a specific clinic branch and date, ordered chronologically with estimated wait times.",
+)
+def get_clinic_queue(
+    branch_id: int = Query(..., description="Clinic Branch ID", ge=1),
+    date: Optional[date] = Query(default=None, description="Date of queue (YYYY-MM-DD); defaults to today"),
+    conn: pymysql.Connection = Depends(get_db),
+) -> List[QueueItemResponse]:
+    """
+    Returns active waiting queue for receptionist and doctor room oversight.
+    """
+    return get_daily_queue(
+        conn=conn,
+        branch_id=branch_id,
+        queue_date=date,
+    )
+
+
+@router.get(
     "/{appointment_id}",
     response_model=AppointmentResponse,
     summary="Get appointment details by ID",
@@ -197,3 +225,89 @@ def get_appointment(
             detail=f"Appointment with ID {appointment_id} not found.",
         )
     return appt
+
+
+@router.put(
+    "/{appointment_id}/reschedule",
+    response_model=AppointmentResponse,
+    summary="Reschedule an appointment to a new date and time slot",
+    description="Validates slot availability excluding current appointment, checks doctor schedule, and updates the appointment record.",
+)
+def reschedule_existing_appointment(
+    payload: AppointmentReschedule,
+    appointment_id: int = Path(..., description="Unique Appointment ID", ge=1),
+    conn: pymysql.Connection = Depends(get_db),
+) -> AppointmentResponse:
+    """
+    Reschedules an existing scheduled/confirmed appointment to a new date and time.
+    Returns HTTP 409 Conflict if target slot collides with another booking.
+    Returns HTTP 400 Bad Request if the appointment cannot be rescheduled.
+    """
+    try:
+        return reschedule_appointment(
+            conn=conn,
+            appointment_id=appointment_id,
+            new_date=payload.new_date,
+            new_start_time=payload.new_start_time,
+            duration_minutes=payload.duration_minutes,
+            reschedule_reason=payload.reschedule_reason,
+        )
+    except AppointmentConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+    except AppointmentValidationError as e:
+        if "does not exist" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e),
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reschedule appointment: {str(e)}",
+        )
+
+
+@router.put(
+    "/{appointment_id}/cancel",
+    response_model=AppointmentResponse,
+    summary="Cancel an appointment with a mandatory reason",
+    description="Marks an appointment as Cancelled and records an audit cancellation reason.",
+)
+def cancel_existing_appointment(
+    payload: AppointmentCancel,
+    appointment_id: int = Path(..., description="Unique Appointment ID", ge=1),
+    conn: pymysql.Connection = Depends(get_db),
+) -> AppointmentResponse:
+    """
+    Cancels an active appointment with a required cancellation reason.
+    Returns HTTP 400 Bad Request if already completed or cancelled.
+    """
+    try:
+        return cancel_appointment(
+            conn=conn,
+            appointment_id=appointment_id,
+            cancellation_reason=payload.cancellation_reason,
+        )
+    except AppointmentValidationError as e:
+        if "does not exist" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e),
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cancel appointment: {str(e)}",
+        )
+

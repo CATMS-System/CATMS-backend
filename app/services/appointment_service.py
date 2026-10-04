@@ -532,3 +532,202 @@ def get_doctor_available_slots(
 
     return available_slots
 
+
+def reschedule_appointment(
+    conn: pymysql.Connection,
+    appointment_id: int,
+    new_date: Union[date, str],
+    new_start_time: Union[time, str],
+    duration_minutes: Optional[int] = None,
+    reschedule_reason: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Atomically reschedules an existing appointment to a new date and time slot.
+    Performs overlap validation excluding the current appointment ID.
+    Rejects rescheduling for already completed, cancelled, or non-existent appointments.
+    """
+    if isinstance(new_date, str):
+        new_date = date.fromisoformat(new_date)
+
+    # 1. Fetch existing appointment
+    current_appt = get_appointment_by_id(conn, appointment_id)
+    if not current_appt:
+        raise AppointmentValidationError(f"Appointment with ID {appointment_id} does not exist.")
+
+    current_status = current_appt["Status"]
+    if current_status == "Cancelled":
+        raise AppointmentValidationError("Cannot reschedule a cancelled appointment.")
+    if current_status == "Completed":
+        raise AppointmentValidationError("Cannot reschedule an already completed appointment.")
+    if current_status == "No_Show":
+        raise AppointmentValidationError("Cannot reschedule a no-show appointment.")
+
+    doctor_id = current_appt["Doctor_ID"]
+    dur = duration_minutes if duration_minutes is not None else current_appt["Duration_Minutes"]
+    if dur <= 0:
+        raise AppointmentValidationError("Duration must be a positive integer in minutes.")
+
+    # 2. Check overlap at new date/time, excluding this appointment
+    check_doctor_appointment_overlap(
+        conn=conn,
+        doctor_id=doctor_id,
+        appointment_date=new_date,
+        start_time=new_start_time,
+        duration_minutes=dur,
+        exclude_appointment_id=appointment_id
+    )
+
+    # 3. Update appointment
+    time_str = new_start_time.strftime("%H:%M:%S") if isinstance(new_start_time, time) else new_start_time
+
+    base_reason = current_appt["Reason_For_Visit"]
+    updated_reason = base_reason
+    if reschedule_reason:
+        updated_reason = f"{base_reason} [Rescheduled: {reschedule_reason.strip()}]"
+
+    update_sql = """
+        UPDATE Appointment
+        SET Appointment_Date = %s,
+            Start_Time = %s,
+            Duration_Minutes = %s,
+            Status = 'Scheduled',
+            Reason_For_Visit = %s
+        WHERE Appointment_ID = %s
+    """
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(update_sql, (new_date, time_str, dur, updated_reason, appointment_id))
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        raise exc
+
+    return get_appointment_by_id(conn, appointment_id)
+
+
+def cancel_appointment(
+    conn: pymysql.Connection,
+    appointment_id: int,
+    cancellation_reason: str
+) -> Dict[str, Any]:
+    """
+    Cancels an existing appointment with a mandatory audit cancellation reason.
+    Cannot cancel an already completed or already cancelled appointment.
+    """
+    if not cancellation_reason or len(cancellation_reason.strip()) < 3:
+        raise AppointmentValidationError("Cancellation reason is mandatory and must be at least 3 characters.")
+
+    # 1. Fetch existing appointment
+    current_appt = get_appointment_by_id(conn, appointment_id)
+    if not current_appt:
+        raise AppointmentValidationError(f"Appointment with ID {appointment_id} does not exist.")
+
+    current_status = current_appt["Status"]
+    if current_status == "Cancelled":
+        raise AppointmentValidationError("Appointment is already cancelled.")
+    if current_status == "Completed":
+        raise AppointmentValidationError("Cannot cancel an already completed appointment.")
+
+    # 2. Update status and cancellation reason
+    update_sql = """
+        UPDATE Appointment
+        SET Status = 'Cancelled',
+            Cancellation_Reason = %s
+        WHERE Appointment_ID = %s
+    """
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(update_sql, (cancellation_reason.strip(), appointment_id))
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        raise exc
+
+    return get_appointment_by_id(conn, appointment_id)
+
+
+def get_daily_queue(
+    conn: pymysql.Connection,
+    branch_id: int,
+    queue_date: Optional[Union[date, str]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves active clinic queue for a given branch and date,
+    ordered by start time and arrival sequence.
+    Includes sequential Queue_Number and computed Estimated_Wait_Minutes.
+    """
+    if queue_date is None:
+        queue_date = date.today()
+    elif isinstance(queue_date, str):
+        queue_date = date.fromisoformat(queue_date)
+
+    query = """
+        SELECT 
+            a.Appointment_ID,
+            a.Patient_ID,
+            CONCAT(p.First_Name, ' ', p.Last_Name) AS Patient_Name,
+            p.Contact_Number AS Patient_Phone,
+            a.Doctor_ID,
+            CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
+            a.Branch_ID,
+            b.Branch_Name,
+            a.Appointment_Date,
+            a.Start_Time,
+            a.Duration_Minutes,
+            a.Appointment_Type,
+            a.Status,
+            a.Reason_For_Visit
+        FROM Appointment a
+        JOIN Patient p ON a.Patient_ID = p.Patient_ID
+        JOIN Doctor d ON a.Doctor_ID = d.Doctor_ID
+        JOIN Staff s ON d.Doctor_ID = s.Staff_ID
+        JOIN Branch b ON a.Branch_ID = b.Branch_ID
+        WHERE a.Branch_ID = %s
+          AND a.Appointment_Date = %s
+          AND a.Status IN ('Scheduled', 'Confirmed')
+        ORDER BY a.Start_Time ASC, a.Appointment_ID ASC
+    """
+
+    with conn.cursor() as cursor:
+        cursor.execute(query, (branch_id, queue_date))
+        rows = cursor.fetchall()
+
+    queue_items = []
+    cumulative_wait = 0
+
+    for idx, row in enumerate(rows, start=1):
+        raw_start = row["Start_Time"]
+        if isinstance(raw_start, timedelta):
+            total_sec = int(raw_start.total_seconds())
+            start_str = f"{(total_sec // 3600):02d}:{(total_sec % 3600 // 60):02d}:{(total_sec % 60):02d}"
+        elif isinstance(raw_start, time):
+            start_str = raw_start.strftime("%H:%M:%S")
+        else:
+            start_str = str(raw_start)
+
+        item = {
+            "Queue_Number": idx,
+            "Appointment_ID": row["Appointment_ID"],
+            "Patient_ID": row["Patient_ID"],
+            "Patient_Name": row["Patient_Name"],
+            "Patient_Phone": row["Patient_Phone"],
+            "Doctor_ID": row["Doctor_ID"],
+            "Doctor_Name": row["Doctor_Name"],
+            "Branch_ID": row["Branch_ID"],
+            "Branch_Name": row["Branch_Name"],
+            "Appointment_Date": row["Appointment_Date"],
+            "Start_Time": start_str,
+            "Duration_Minutes": row["Duration_Minutes"],
+            "Appointment_Type": row["Appointment_Type"],
+            "Status": row["Status"],
+            "Reason_For_Visit": row["Reason_For_Visit"],
+            "Estimated_Wait_Minutes": cumulative_wait
+        }
+        queue_items.append(item)
+        cumulative_wait += row["Duration_Minutes"]
+
+    return queue_items
+
+

@@ -3,10 +3,11 @@ Pydantic v2 schemas for Appointment, Walk-In, Rescheduling, and Cancellation.
 Provides strict validation rules for booking requests and serialization for responses.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, time
 from enum import Enum
 from typing import Optional, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
+
 
 
 class AppointmentType(str, Enum):
@@ -97,6 +98,18 @@ class AppointmentResponse(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
+    @field_serializer("start_time", "end_time", mode="plain", check_fields=False)
+    def serialize_time_fields(self, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        if isinstance(v, timedelta):
+            total_sec = int(v.total_seconds())
+            return f"{(total_sec // 3600):02d}:{(total_sec % 3600 // 60):02d}:{(total_sec % 60):02d}"
+        if isinstance(v, time):
+            return v.strftime("%H:%M:%S")
+        return str(v)
+
+
 
 class AppointmentStatusCountsResponse(BaseModel):
     """Real-time operational summary metrics for receptionist and clinic queue."""
@@ -109,3 +122,26 @@ class AppointmentStatusCountsResponse(BaseModel):
     walk_in: int = Field(..., alias="Walk_In")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class QueueItemResponse(BaseModel):
+    """Live daily clinic queue entry for receptionist and doctor room oversight."""
+    queue_number: int = Field(..., alias="Queue_Number", description="Sequential daily queue order position")
+    appointment_id: int = Field(..., alias="Appointment_ID", description="Unique appointment identifier")
+    patient_id: int = Field(..., alias="Patient_ID", description="Patient ID")
+    patient_name: str = Field(..., alias="Patient_Name", description="Patient full name")
+    patient_phone: Optional[str] = Field(default=None, alias="Patient_Phone", description="Contact phone number")
+    doctor_id: int = Field(..., alias="Doctor_ID", description="Target Doctor ID")
+    doctor_name: str = Field(..., alias="Doctor_Name", description="Target Doctor full name")
+    branch_id: int = Field(..., alias="Branch_ID", description="Clinic Branch ID")
+    branch_name: str = Field(..., alias="Branch_Name", description="Clinic Branch name")
+    appointment_date: date = Field(..., alias="Appointment_Date", description="Date of appointment")
+    start_time: Any = Field(..., alias="Start_Time", description="Scheduled start time")
+    duration_minutes: int = Field(..., alias="Duration_Minutes", description="Consultation duration in minutes")
+    appointment_type: str = Field(..., alias="Appointment_Type", description="Type of appointment (Standard, Walk_In, etc.)")
+    status: str = Field(..., alias="Status", description="Lifecycle status (Scheduled, Confirmed)")
+    reason_for_visit: str = Field(..., alias="Reason_For_Visit", description="Reason for visit or triage note")
+    estimated_wait_minutes: Optional[int] = Field(default=0, alias="Estimated_Wait_Minutes", description="Estimated waiting minutes based on preceding queue")
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
