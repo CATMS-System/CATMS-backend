@@ -67,8 +67,10 @@ def create_consultation(
     Inserts into Consultation with formatted vitals in Clinical_Notes.
     Validates prescribed items against Treatment_Catalogue (422) and inserts into
     Prescribed_Treatment using authoritative standard unit prices.
-    Updates Appointment status to 'Completed'.
+    Completes appointment ('Completed') and generates 'Issued' Invoice via stored procedure
+    `sp_complete_consultation_and_generate_invoice` (with fallback to inline SQL).
     Rolls back on any exception; commits on success.
+    Returns consultation_id and invoice_id.
     """
     appointment_id = (
         payload.appointment_id
@@ -252,21 +254,55 @@ def create_consultation(
                         "instructions": instructions,
                     })
 
-            # 8. UPDATE Appointment SET Status = 'Completed'
-            cursor.execute(
-                """
-                UPDATE Appointment
-                SET Status = 'Completed'
-                WHERE Appointment_ID = %s
-                """,
-                (appointment_id,)
-            )
+            # 8. Complete consultation and generate invoice via stored procedure
+            # (marks Appointment Status='Completed' and generates 'Issued' Invoice)
+            try:
+                cursor.execute(
+                    "CALL sp_complete_consultation_and_generate_invoice(%s, @invoice_id)",
+                    (consultation_id,)
+                )
+                cursor.execute("SELECT @invoice_id AS invoice_id")
+                inv_res = cursor.fetchone()
+                invoice_id = inv_res["invoice_id"] if inv_res else None
+            except pymysql.err.OperationalError as proc_err:
+                # Fallback to inline SQL if stored procedure is not yet registered (error 1305)
+                if len(proc_err.args) > 0 and proc_err.args[0] == 1305:
+                    cursor.execute(
+                        "UPDATE Appointment SET Status = 'Completed' WHERE Appointment_ID = %s",
+                        (appointment_id,)
+                    )
+                    cursor.execute(
+                        """
+                        SELECT d.Standard_Consultation_Fee
+                        FROM Appointment a
+                        JOIN Doctor d ON a.Doctor_ID = d.Doctor_ID
+                        WHERE a.Appointment_ID = %s
+                        """,
+                        (appointment_id,)
+                    )
+                    doc_row = cursor.fetchone()
+                    fee = doc_row["Standard_Consultation_Fee"] if doc_row else Decimal("0.00")
+                    cursor.execute(
+                        """
+                        INSERT INTO Invoice (
+                            Consultation_ID,
+                            Invoice_Date,
+                            Billed_Consultation_Fee,
+                            Invoice_Status
+                        ) VALUES (%s, CURRENT_DATE, %s, 'Issued')
+                        """,
+                        (consultation_id, fee)
+                    )
+                    invoice_id = cursor.lastrowid
+                else:
+                    raise proc_err
 
             # Commit the single atomic transaction
             conn.commit()
 
             return {
                 "consultation_id": consultation_id,
+                "invoice_id": invoice_id,
                 "appointment_id": appointment_id,
                 "consultation_date": date.today(),
                 "diagnosis": diagnosis,
