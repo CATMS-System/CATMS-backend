@@ -183,3 +183,133 @@ All errors return standard JSON payloads with an informative `detail` string:
   - `200 OK`: Full appointment record.
   - `404 Not Found`: Appointment not found.
 
+---
+
+## 4. Lifecycle Modification & Clinic Queue Endpoints
+
+### 4.1 Reschedule Appointment
+- **Route**: `PUT /api/v1/appointments/{appointment_id}/reschedule`
+- **Description**: Moves an appointment to a new date and time slot. Validates doctor availability with self-exclusion (permits duration and start-time changes within same booking).
+- **Path Parameters**:
+  - `appointment_id` *(integer, required)*: Unique Appointment ID.
+- **Request Body**:
+```json
+{
+  "new_date": "2026-11-25",
+  "new_start_time": "15:00:00",
+  "duration_minutes": 30,
+  "reschedule_reason": "Patient requested afternoon shift"
+}
+```
+- **Responses**:
+  - `200 OK`: Updated appointment record with audit reason appended.
+  - `400 Bad Request`: Lifecycle violation (cannot reschedule `Cancelled` or `Completed` bookings).
+  - `404 Not Found`: Appointment not found.
+  - `409 Conflict`: Target slot collides with another booking for the doctor.
+
+---
+
+### 4.2 Cancel Appointment
+- **Route**: `PUT /api/v1/appointments/{appointment_id}/cancel`
+- **Description**: Marks appointment as `Cancelled` and stores mandatory audit cancellation reason.
+- **Path Parameters**:
+  - `appointment_id` *(integer, required)*: Unique Appointment ID.
+- **Request Body**:
+```json
+{
+  "cancellation_reason": "Patient called to cancel due to family emergency"
+}
+```
+- **Responses**:
+  - `200 OK`: Cancelled appointment record with `Status: Cancelled`.
+  - `400 Bad Request`: Appointment already cancelled or completed.
+  - `404 Not Found`: Appointment not found.
+  - `422 Unprocessable Entity`: Cancellation reason shorter than 3 characters.
+
+---
+
+### 4.3 Aggregated Appointment Status Metrics
+- **Route**: `GET /api/v1/appointments/metrics/status-counts`
+- **Description**: Returns live operational counts across all statuses for reception dashboard oversight.
+- **Query Parameters**:
+  - `date` *(optional, date)*: Filter metrics by date.
+  - `branch_id` *(optional, integer)*: Filter metrics by clinic branch.
+  - `doctor_id` *(optional, integer)*: Filter metrics by doctor.
+- **Response**: `200 OK`
+```json
+{
+  "Total": 14,
+  "Scheduled": 4,
+  "Confirmed": 3,
+  "Completed": 5,
+  "Cancelled": 1,
+  "No_Show": 1,
+  "Walk_In": 2
+}
+```
+
+---
+
+### 4.4 Live Clinic Waiting Queue
+- **Route**: `GET /api/v1/appointments/queue`
+- **Description**: Real-time queue for reception desk and doctor consultation room display. Ordered chronologically (`Start_Time ASC, Appointment_ID ASC`).
+- **Query Parameters**:
+  - `branch_id` *(integer, required)*: Clinic branch ID.
+  - `date` *(optional, date)*: Target queue date (defaults to current date).
+- **Response**: `200 OK`
+```json
+[
+  {
+    "Queue_Number": 1,
+    "Appointment_ID": 10,
+    "Patient_ID": 1,
+    "Patient_Name": "John Doe",
+    "Patient_Phone": "+94 77 123 4567",
+    "Doctor_ID": 1,
+    "Doctor_Name": "Alexander Bennett",
+    "Branch_ID": 1,
+    "Branch_Name": "Colombo Main Clinic",
+    "Appointment_Date": "2026-11-28",
+    "Start_Time": "10:00:00",
+    "Duration_Minutes": 20,
+    "Appointment_Type": "Standard",
+    "Status": "Scheduled",
+    "Reason_For_Visit": "Cardiology Review",
+    "Estimated_Wait_Minutes": 0
+  },
+  {
+    "Queue_Number": 2,
+    "Appointment_ID": 11,
+    "Patient_ID": 2,
+    "Patient_Name": "Jane Smith",
+    "Patient_Phone": "+94 71 987 6543",
+    "Doctor_ID": 1,
+    "Doctor_Name": "Alexander Bennett",
+    "Branch_ID": 1,
+    "Branch_Name": "Colombo Main Clinic",
+    "Appointment_Date": "2026-11-28",
+    "Start_Time": "10:30:00",
+    "Duration_Minutes": 25,
+    "Appointment_Type": "Walk_In",
+    "Status": "Confirmed",
+    "Reason_For_Visit": "[High Urgency] Chest tightness",
+    "Estimated_Wait_Minutes": 20
+  }
+]
+```
+
+---
+
+## 5. Summary of HTTP Status Codes
+
+| Code | Status | Usage |
+|:---|:---|:---|
+| `200` | OK | Successful retrieval or update operation |
+| `201` | Created | Successfully booked standard or walk-in appointment |
+| `400` | Bad Request | Business rule or foreign key validation failure |
+| `404` | Not Found | Requested entity (Doctor, Appointment) does not exist |
+| `409` | Conflict | Overlapping appointment collision detected for doctor |
+| `422` | Unprocessable Entity | Pydantic payload schema or constraint validation error |
+| `500` | Server Error | Internal server or database execution exception |
+
+
