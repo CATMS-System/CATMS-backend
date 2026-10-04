@@ -219,3 +219,66 @@ def test_adjacent_slots_do_not_collide(db_conn, cleanup_records):
     cleanup_records.append(appt2["Appointment_ID"])
     assert appt2["Appointment_ID"] > 0
 
+
+# ============================================================================
+# Task 3: Emergency Walk-In Booking
+# ============================================================================
+
+def test_case_3_emergency_walk_in_booking_service(db_conn, cleanup_records):
+    """
+    Day 11 - Test Case 3 (Service Layer):
+    Verifies walk-in creation succeeds with null schedule (Schedule_ID = None),
+    Appointment_Type = 'Walk_In', and immediate Status = 'Confirmed'.
+    """
+    test_date = date(2026, 12, 5)
+    walk_in = book_appointment_atomic(
+        conn=db_conn,
+        patient_id=3,
+        doctor_id=1,
+        branch_id=1,
+        appointment_date=test_date,
+        start_time="15:30:00",
+        duration_minutes=15,
+        appointment_type="Walk_In",
+        reason_for_visit="[Critical Urgency] Severe dizziness and collapse",
+        schedule_id=None,
+    )
+
+    assert walk_in is not None
+    assert walk_in["Appointment_ID"] > 0
+    cleanup_records.append(walk_in["Appointment_ID"])
+
+    assert walk_in["Appointment_Type"] == "Walk_In"
+    assert walk_in["Status"] == "Confirmed"
+    assert walk_in["Schedule_ID"] is None
+    assert "[Critical Urgency]" in walk_in["Reason_For_Visit"]
+
+
+def test_case_3_emergency_walk_in_booking_api(client, cleanup_records):
+    """
+    Day 11 - Test Case 3 (API Layer):
+    Verifies POST /api/v1/appointments/walk-in succeeds with 201 Created,
+    populating triage urgency badge, Schedule_ID=None, and Status=Confirmed.
+    """
+    payload = {
+        "patient_id": 4,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "reason_for_visit": "High fever and dehydration",
+        "duration_minutes": 20,
+        "triage_urgency": "High",
+        "appointment_date": "2026-12-05",
+        "start_time": "16:00:00",
+    }
+    res = client.post("/api/v1/appointments/walk-in", json=payload)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["Appointment_ID"] > 0
+    cleanup_records.append(data["Appointment_ID"])
+
+    assert data["Appointment_Type"] == "Walk_In"
+    assert data["Status"] == "Confirmed"
+    assert data["Schedule_ID"] is None
+    assert "[High Urgency]" in data["Reason_For_Visit"]
+
+
