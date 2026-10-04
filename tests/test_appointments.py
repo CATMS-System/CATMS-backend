@@ -10,7 +10,11 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.db.connection import get_db_connection
-from app.services.appointment_service import book_appointment_atomic
+from app.services.appointment_service import (
+    book_appointment_atomic,
+    AppointmentConflictError,
+)
+
 
 
 @pytest.fixture(scope="module")
@@ -107,3 +111,111 @@ def test_case_1_standard_appointment_booking_api(client, cleanup_records):
     assert data["Status"] == "Scheduled"
     assert data["Doctor_Name"] == "Alexander Bennett"
     assert "11:00:00" in str(data["Start_Time"])
+
+
+# ============================================================================
+# Task 2: Overlapping Appointment Booking Conflict (HTTP 409)
+# ============================================================================
+
+def test_case_2_overlapping_appointment_booking_service(db_conn, cleanup_records):
+    """
+    Day 11 - Test Case 2 (Service Layer):
+    Verifies that attempting to book an overlapping slot raises AppointmentConflictError.
+    Tests partial overlap: candidate [14:15, 14:45] vs existing [14:00, 14:30].
+    """
+    test_date = date(2026, 12, 2)
+    initial = book_appointment_atomic(
+        conn=db_conn,
+        patient_id=1,
+        doctor_id=1,
+        branch_id=1,
+        appointment_date=test_date,
+        start_time="14:00:00",
+        duration_minutes=30,
+        appointment_type="Standard",
+        reason_for_visit="First visit",
+    )
+    cleanup_records.append(initial["Appointment_ID"])
+
+    with pytest.raises(AppointmentConflictError) as exc_info:
+        book_appointment_atomic(
+            conn=db_conn,
+            patient_id=2,
+            doctor_id=1,
+            branch_id=1,
+            appointment_date=test_date,
+            start_time="14:15:00",
+            duration_minutes=30,
+            appointment_type="Standard",
+            reason_for_visit="Conflicting visit",
+        )
+    assert "overlapping appointment" in str(exc_info.value).lower()
+
+
+def test_case_2_overlapping_appointment_booking_api(client, cleanup_records):
+    """
+    Day 11 - Test Case 2 (API Layer):
+    Verifies POST /api/v1/appointments returns HTTP 409 Conflict
+    when slot is already booked for the same doctor.
+    """
+    test_date = "2026-12-03"
+    res1 = client.post("/api/v1/appointments", json={
+        "patient_id": 1,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "09:00:00",
+        "duration_minutes": 30,
+        "appointment_type": "Standard",
+        "reason_for_visit": "Seeded booking",
+    })
+    assert res1.status_code == 201
+    cleanup_records.append(res1.json()["Appointment_ID"])
+
+    res2 = client.post("/api/v1/appointments", json={
+        "patient_id": 2,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "09:20:00",
+        "duration_minutes": 30,
+        "appointment_type": "Standard",
+        "reason_for_visit": "Colliding booking",
+    })
+    assert res2.status_code == 409
+    assert "overlapping appointment" in res2.json()["detail"].lower()
+
+
+def test_adjacent_slots_do_not_collide(db_conn, cleanup_records):
+    """
+    Verifies back-to-back adjacent slots (e.g. 10:00-10:30 and 10:30-11:00)
+    do NOT trigger collision error.
+    """
+    test_date = date(2026, 12, 4)
+    appt1 = book_appointment_atomic(
+        conn=db_conn,
+        patient_id=1,
+        doctor_id=1,
+        branch_id=1,
+        appointment_date=test_date,
+        start_time="10:00:00",
+        duration_minutes=30,
+        appointment_type="Standard",
+        reason_for_visit="First slot",
+    )
+    cleanup_records.append(appt1["Appointment_ID"])
+
+    appt2 = book_appointment_atomic(
+        conn=db_conn,
+        patient_id=2,
+        doctor_id=1,
+        branch_id=1,
+        appointment_date=test_date,
+        start_time="10:30:00",
+        duration_minutes=30,
+        appointment_type="Standard",
+        reason_for_visit="Adjacent slot",
+    )
+    cleanup_records.append(appt2["Appointment_ID"])
+    assert appt2["Appointment_ID"] > 0
+
