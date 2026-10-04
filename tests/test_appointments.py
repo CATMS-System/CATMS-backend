@@ -360,4 +360,105 @@ def test_reschedule_self_exclusion_succeeds(client, cleanup_records):
     assert updated["Duration_Minutes"] == 30
 
 
+# ============================================================================
+# Additional Tests: Lifecycle & Live Queue Ordering
+# ============================================================================
+
+def test_cancellation_and_protection_guards(client, cleanup_records):
+    """
+    Verifies appointment cancellation records audit reason,
+    and prevents double cancellation or rescheduling of cancelled records.
+    """
+    test_date = "2026-12-08"
+    res = client.post("/api/v1/appointments", json={
+        "patient_id": 1,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "14:00:00",
+        "duration_minutes": 20,
+        "reason_for_visit": "Audit cancel test",
+    })
+    assert res.status_code == 201
+    appt_id = res.json()["Appointment_ID"]
+    cleanup_records.append(appt_id)
+
+    # 1. Cancel appointment
+    cancel_res = client.put(f"/api/v1/appointments/{appt_id}/cancel", json={
+        "cancellation_reason": "Patient rescheduled to next month via phone",
+    })
+    assert cancel_res.status_code == 200
+    assert cancel_res.json()["Status"] == "Cancelled"
+
+    # 2. Cannot cancel again
+    cancel_again = client.put(f"/api/v1/appointments/{appt_id}/cancel", json={
+        "cancellation_reason": "Duplicate cancel attempt",
+    })
+    assert cancel_again.status_code == 400
+    assert "already cancelled" in cancel_again.json()["detail"].lower()
+
+    # 3. Cannot reschedule a cancelled appointment
+    resched_cancelled = client.put(f"/api/v1/appointments/{appt_id}/reschedule", json={
+        "new_date": test_date,
+        "new_start_time": "15:00:00",
+    })
+    assert resched_cancelled.status_code == 400
+    assert "cannot reschedule a cancelled appointment" in resched_cancelled.json()["detail"].lower()
+
+
+def test_live_clinic_queue_ordering(client, cleanup_records):
+    """
+    Verifies GET /api/v1/appointments/queue returns active queue ordered chronologically
+    with sequential token numbers and correct wait estimations.
+    """
+    test_date = "2026-12-09"
+    # Patient 1: 08:30 (Duration 15)
+    p1 = client.post("/api/v1/appointments", json={
+        "patient_id": 1, "doctor_id": 1, "branch_id": 1,
+        "appointment_date": test_date, "start_time": "08:30:00",
+        "duration_minutes": 15, "reason_for_visit": "Queue Patient 1"
+    }).json()
+    cleanup_records.append(p1["Appointment_ID"])
+
+    # Patient 2 (Walk-In): 08:45 (Duration 20)
+    p2 = client.post("/api/v1/appointments/walk-in", json={
+        "patient_id": 2, "doctor_id": 1, "branch_id": 1,
+        "appointment_date": test_date, "start_time": "08:45:00",
+        "duration_minutes": 20, "reason_for_visit": "Walk-in Patient 2",
+        "triage_urgency": "Normal"
+    }).json()
+    cleanup_records.append(p2["Appointment_ID"])
+
+    # Patient 3: 09:15 (Duration 30)
+    p3 = client.post("/api/v1/appointments", json={
+        "patient_id": 3, "doctor_id": 1, "branch_id": 1,
+        "appointment_date": test_date, "start_time": "09:15:00",
+        "duration_minutes": 30, "reason_for_visit": "Queue Patient 3"
+    }).json()
+    cleanup_records.append(p3["Appointment_ID"])
+
+    # Query Queue
+    res_queue = client.get(f"/api/v1/appointments/queue?branch_id=1&date={test_date}")
+    assert res_queue.status_code == 200
+    items = res_queue.json()
+    assert len(items) >= 3
+
+    # Position 1
+    assert items[0]["Queue_Number"] == 1
+    assert items[0]["Appointment_ID"] == p1["Appointment_ID"]
+    assert items[0]["Estimated_Wait_Minutes"] == 0
+
+    # Position 2
+    assert items[1]["Queue_Number"] == 2
+    assert items[1]["Appointment_ID"] == p2["Appointment_ID"]
+    assert items[1]["Appointment_Type"] == "Walk_In"
+    assert items[1]["Estimated_Wait_Minutes"] == 15
+
+    # Position 3
+    assert items[2]["Queue_Number"] == 3
+    assert items[2]["Appointment_ID"] == p3["Appointment_ID"]
+    assert items[2]["Estimated_Wait_Minutes"] == 35  # 15 + 20
+
+
+
 
