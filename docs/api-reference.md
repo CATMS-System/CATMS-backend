@@ -109,3 +109,77 @@ All errors return standard JSON payloads with an informative `detail` string:
 - **Route**: `GET /api/v1/specialties`
 - **Description**: Returns all medical specialties with assigned doctor counts.
 - **Response**: `200 OK`
+
+---
+
+## 3. Appointment Booking & Retrieval Endpoints
+
+### 3.1 Book Standard Appointment
+- **Route**: `POST /api/v1/appointments`
+- **Description**: Atomically creates a scheduled appointment after verifying foreign keys and executing overlap validation.
+- **Request Body**:
+```json
+{
+  "patient_id": 1,
+  "doctor_id": 1,
+  "branch_id": 1,
+  "appointment_date": "2026-11-20",
+  "start_time": "10:00:00",
+  "duration_minutes": 30,
+  "appointment_type": "Standard",
+  "reason_for_visit": "Bi-annual cardiac health review",
+  "schedule_id": 1
+}
+```
+- **Responses**:
+  - `201 Created`: Appointment record successfully created (`Status: Scheduled`).
+  - `400 Bad Request`: Invalid patient, doctor, or branch foreign key reference.
+  - `409 Conflict`: Requested interval overlaps with an existing booking for the doctor.
+  - `422 Unprocessable Entity`: Request body validation failed (e.g. invalid date format).
+
+---
+
+### 3.2 Register Emergency / Walk-In Appointment
+- **Route**: `POST /api/v1/appointments/walk-in`
+- **Description**: Fast-path creation for unscheduled patients. Automatically sets `Schedule_ID = NULL`, `Appointment_Type = 'Walk_In'`, and immediate `Status = 'Confirmed'`.
+- **Request Body**:
+```json
+{
+  "patient_id": 3,
+  "doctor_id": 1,
+  "branch_id": 1,
+  "reason_for_visit": "Acute severe shortness of breath",
+  "duration_minutes": 15,
+  "triage_urgency": "Critical",
+  "appointment_date": "2026-11-21",
+  "start_time": "11:00:00"
+}
+```
+- **Responses**:
+  - `201 Created`: Walk-in created and confirmed.
+  - `400 Bad Request`: Validation failure.
+  - `409 Conflict`: Target doctor occupied at requested emergency time slot.
+
+---
+
+### 3.3 List Appointments with Filtering
+- **Route**: `GET /api/v1/appointments`
+- **Description**: Retrieves appointments matching search parameters, ordered chronologically.
+- **Query Parameters**:
+  - `date` *(optional, date)*: Filter by appointment date (`YYYY-MM-DD`).
+  - `doctor_id` *(optional, integer)*: Filter by doctor ID.
+  - `branch_id` *(optional, integer)*: Filter by branch ID.
+  - `status` *(optional, string)*: Filter by status (`Scheduled`, `Confirmed`, `Completed`, `Cancelled`, `No_Show`).
+- **Response**: `200 OK` (Array of appointment records).
+
+---
+
+### 3.4 Get Appointment Details
+- **Route**: `GET /api/v1/appointments/{appointment_id}`
+- **Description**: Retrieves full details for a single appointment including patient identity, doctor profile, and clinic branch.
+- **Path Parameters**:
+  - `appointment_id` *(integer, required)*: Unique Appointment ID.
+- **Responses**:
+  - `200 OK`: Full appointment record.
+  - `404 Not Found`: Appointment not found.
+
