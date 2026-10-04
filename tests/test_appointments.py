@@ -282,3 +282,82 @@ def test_case_3_emergency_walk_in_booking_api(client, cleanup_records):
     assert "[High Urgency]" in data["Reason_For_Visit"]
 
 
+# ============================================================================
+# Task 4: Rescheduling to Occupied Slot is Rejected
+# ============================================================================
+
+def test_case_4_reschedule_occupied_slot_rejected(client, cleanup_records):
+    """
+    Day 11 - Test Case 4 (API Layer):
+    Verifies PUT /api/v1/appointments/{id}/reschedule is rejected with HTTP 409 Conflict
+    when target slot is occupied by another booking.
+    """
+    test_date = "2026-12-06"
+    res_a = client.post("/api/v1/appointments", json={
+        "patient_id": 1,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "09:00:00",
+        "duration_minutes": 30,
+        "reason_for_visit": "Booking A",
+    })
+    assert res_a.status_code == 201
+    appt_a_id = res_a.json()["Appointment_ID"]
+    cleanup_records.append(appt_a_id)
+
+    res_b = client.post("/api/v1/appointments", json={
+        "patient_id": 2,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "11:00:00",
+        "duration_minutes": 30,
+        "reason_for_visit": "Booking B",
+    })
+    assert res_b.status_code == 201
+    appt_b_id = res_b.json()["Appointment_ID"]
+    cleanup_records.append(appt_b_id)
+
+    res_resched = client.put(f"/api/v1/appointments/{appt_b_id}/reschedule", json={
+        "new_date": test_date,
+        "new_start_time": "09:15:00",
+        "duration_minutes": 30,
+        "reschedule_reason": "Trying to move to earlier occupied slot",
+    })
+    assert res_resched.status_code == 409
+    assert "overlapping appointment" in res_resched.json()["detail"].lower()
+
+
+def test_reschedule_self_exclusion_succeeds(client, cleanup_records):
+    """
+    Verifies that rescheduling an appointment within its own time range
+    (e.g., shifting 15 minutes forward) does NOT self-collide.
+    """
+    test_date = "2026-12-07"
+    res = client.post("/api/v1/appointments", json={
+        "patient_id": 1,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "10:00:00",
+        "duration_minutes": 45,
+        "reason_for_visit": "Self exclusion test",
+    })
+    assert res.status_code == 201
+    appt_id = res.json()["Appointment_ID"]
+    cleanup_records.append(appt_id)
+
+    res_shift = client.put(f"/api/v1/appointments/{appt_id}/reschedule", json={
+        "new_date": test_date,
+        "new_start_time": "10:15:00",
+        "duration_minutes": 30,
+        "reschedule_reason": "Doctor delayed slightly",
+    })
+    assert res_shift.status_code == 200
+    updated = res_shift.json()
+    assert "10:15:00" in str(updated["Start_Time"])
+    assert updated["Duration_Minutes"] == 30
+
+
+
