@@ -6,6 +6,18 @@ class InvoiceRepository:
     def __init__(self, db: pymysql.Connection):
         self.db = db
 
+    def get_all(self):
+        with self.db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM Invoice
+                ORDER BY Invoice_ID
+                """
+            )
+
+            return cursor.fetchall()
+        
     def get_by_id(self, invoice_id: int):
         with self.db.cursor() as cursor:
             cursor.execute(

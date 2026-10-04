@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
+import pymysql
+
 from app.schemas.billing import (
     PaymentCreate,
     ClaimCreate,
     ClaimStatusUpdate,
 )
-import pymysql
-
 from app.api.deps import get_db
 from app.repositories.invoice_repository import InvoiceRepository
 from app.services.billing_service import BillingService
@@ -14,6 +14,13 @@ from app.services.billing_service import BillingService
 router = APIRouter()
 
 
+@router.get("/invoices")
+def get_invoices(
+    db: pymysql.Connection = Depends(get_db)
+):
+    invoice_repository = InvoiceRepository(db)
+
+    return invoice_repository.get_all()
 
 
 @router.get("/invoices/{invoice_id}")
@@ -42,8 +49,9 @@ def get_invoice(
     }
 
 
-@router.post("/payments")
+@router.post("/invoices/{invoice_id}/payments")
 def record_payment(
+    invoice_id: int,
     payment_data: PaymentCreate,
     db: pymysql.Connection = Depends(get_db)
 ):
@@ -51,7 +59,7 @@ def record_payment(
 
     try:
         result = billing_service.record_payment(
-            invoice_id=payment_data.invoice_id,
+            invoice_id=invoice_id,
             amount=payment_data.amount,
             payment_method=payment_data.payment_method,
             transaction_reference=payment_data.transaction_reference
@@ -66,12 +74,9 @@ def record_payment(
         )
 
 
-
-
-
-
-@router.post("/claims")
+@router.post("/invoices/{invoice_id}/claims")
 def submit_insurance_claim(
+    invoice_id: int,
     claim_data: ClaimCreate,
     db: pymysql.Connection = Depends(get_db)
 ):
@@ -79,7 +84,7 @@ def submit_insurance_claim(
 
     try:
         claim = billing_service.submit_insurance_claim(
-            invoice_id=claim_data.invoice_id,
+            invoice_id=invoice_id,
             policy_id=claim_data.policy_id,
             claimed_amount=claim_data.claimed_amount
         )
@@ -91,7 +96,6 @@ def submit_insurance_claim(
             status_code=400,
             detail=str(e)
         )
-
 
 
 @router.patch("/claims/{claim_id}/status")

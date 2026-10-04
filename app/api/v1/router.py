@@ -32,5 +32,5 @@ def health_check(conn: pymysql.Connection = Depends(get_db)):
 # api_router.include_router(doctors.router, prefix="/doctors", tags=["Doctors"])
 # api_router.include_router(appointments.router, prefix="/appointments", tags=["Appointments"])
 # api_router.include_router(consultations.router, prefix="/consultations", tags=["Consultations"])
-api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
+api_router.include_router(billing.router, tags=["Billing"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
