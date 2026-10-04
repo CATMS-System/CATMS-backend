@@ -67,6 +67,7 @@ def create_consultation(
     Inserts into Consultation with formatted vitals in Clinical_Notes.
     Validates prescribed items against Treatment_Catalogue (422) and inserts into
     Prescribed_Treatment using authoritative standard unit prices.
+    Updates Appointment status to 'Completed'.
     Rolls back on any exception; commits on success.
     """
     appointment_id = (
@@ -250,6 +251,16 @@ def create_consultation(
                         "line_total": Decimal(str(quantity)) * billed_unit_price,
                         "instructions": instructions,
                     })
+
+            # 8. UPDATE Appointment SET Status = 'Completed'
+            cursor.execute(
+                """
+                UPDATE Appointment
+                SET Status = 'Completed'
+                WHERE Appointment_ID = %s
+                """,
+                (appointment_id,)
+            )
 
             # Commit the single atomic transaction
             conn.commit()
