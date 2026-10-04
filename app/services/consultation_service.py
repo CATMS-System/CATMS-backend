@@ -6,7 +6,8 @@ Service functions receive a PyMySQL connection (`pymysql.Connection`) as a param
 """
 
 from datetime import date
-from typing import Any, Dict, Optional, Union
+from decimal import Decimal
+from typing import Any, Dict, List, Optional, Union
 from fastapi import HTTPException, status
 import pymysql
 import pymysql.cursors
@@ -63,7 +64,10 @@ def create_consultation(
     Initiates clinical consultation creation for an appointment under a pessimistic lock.
     Validates appointment existence (404), active booking status (409), and ensures no
     duplicate consultation exists (409).
-    Inserts into Consultation with formatted vitals in Clinical_Notes and commits.
+    Inserts into Consultation with formatted vitals in Clinical_Notes.
+    Validates prescribed items against Treatment_Catalogue (422) and inserts into
+    Prescribed_Treatment using authoritative standard unit prices.
+    Rolls back on any exception; commits on success.
     """
     appointment_id = (
         payload.appointment_id
@@ -94,6 +98,11 @@ def create_consultation(
         payload.vitals
         if hasattr(payload, "vitals")
         else payload.get("vitals")
+    )
+    items = (
+        payload.items
+        if hasattr(payload, "items")
+        else payload.get("items", [])
     )
 
     try:
@@ -167,7 +176,82 @@ def create_consultation(
             )
             consultation_id = cursor.lastrowid
 
-            # Commit the transaction here for now
+            # 7. Validate and INSERT prescribed items
+            prescribed_items_out: List[Dict[str, Any]] = []
+            if items:
+                for item in items:
+                    treatment_id = (
+                        item.treatment_id
+                        if hasattr(item, "treatment_id")
+                        else item["treatment_id"]
+                    )
+                    quantity = (
+                        item.quantity
+                        if hasattr(item, "quantity")
+                        else item.get("quantity", 1)
+                    )
+                    instructions = (
+                        item.instructions
+                        if hasattr(item, "instructions")
+                        else item.get("instructions")
+                    )
+
+                    # Query Treatment_Catalogue (must exist and be Active)
+                    cursor.execute(
+                        """
+                        SELECT Treatment_ID, Service_Code, Treatment_Name, Standard_Unit_Price, Treatment_Status
+                        FROM Treatment_Catalogue
+                        WHERE Treatment_ID = %s
+                        """,
+                        (treatment_id,)
+                    )
+                    treatment = cursor.fetchone()
+                    if not treatment:
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Treatment ID {treatment_id} does not exist in the catalogue."
+                        )
+                    if treatment["Treatment_Status"] != "Active":
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Treatment ID {treatment_id} ('{treatment['Treatment_Name']}') is not active."
+                        )
+
+                    # Authoritative server-side price (never trust client-sent prices)
+                    billed_unit_price = treatment["Standard_Unit_Price"]
+
+                    cursor.execute(
+                        """
+                        INSERT INTO Prescribed_Treatment (
+                            Consultation_ID,
+                            Treatment_ID,
+                            Quantity,
+                            Billed_Unit_Price,
+                            Instructions
+                        ) VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        (
+                            consultation_id,
+                            treatment_id,
+                            quantity,
+                            billed_unit_price,
+                            instructions,
+                        )
+                    )
+                    prescription_item_id = cursor.lastrowid
+
+                    prescribed_items_out.append({
+                        "prescription_item_id": prescription_item_id,
+                        "treatment_id": treatment_id,
+                        "service_code": treatment["Service_Code"],
+                        "treatment_name": treatment["Treatment_Name"],
+                        "quantity": quantity,
+                        "billed_unit_price": billed_unit_price,
+                        "line_total": Decimal(str(quantity)) * billed_unit_price,
+                        "instructions": instructions,
+                    })
+
+            # Commit the single atomic transaction
             conn.commit()
 
             return {
@@ -178,6 +262,7 @@ def create_consultation(
                 "clinical_notes": clinical_notes,
                 "doctor_notes": doctor_notes,
                 "follow_up_date": follow_up_date,
+                "items": prescribed_items_out,
             }
     except Exception as e:
         conn.rollback()
