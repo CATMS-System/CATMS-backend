@@ -113,3 +113,24 @@ class EmergencyContactCreate(StrictModel):
     @field_validator("postal_code")
     def _postal(cls, v: str | None) -> str | None:
         return validate_postal(v) if v is not None else v
+
+class EmergencyContactUpdate(StrictModel):
+    """Edits ONE emergency contact. The id says which one, because a patient
+    can have several. The service checks the contact really belongs to the
+    patient being updated """
+    emergency_contact_id: int = Field(..., gt=0)
+    first_name: str | None = Field(None, min_length=1, max_length=50)
+    last_name: str | None = Field(None, min_length=1, max_length=50)
+    relationship_to_patient: str | None = Field(None, min_length=1, max_length=50)
+    contact_number: str | None = None
+    street_address: str | None = Field(None, max_length=150)
+    city: str | None = Field(None, max_length=50)
+    postal_code: str | None = Field(None, max_length=20)
+
+    @field_validator("contact_number")
+    def _phone(cls, v: str | None) -> str | None:
+        return normalize_phone(v) if v is not None else v
+
+    @field_validator("postal_code")
+    def _postal(cls, v: str | None) -> str | None:
+        return validate_postal(v) if v is not None else v
