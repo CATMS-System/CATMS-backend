@@ -332,3 +332,19 @@ class PatientDetailResponse(BaseModel):
     # These reuse the response classes defined above, so those classes must stay above this one in the file
     emergency_contacts: list[EmergencyContactResponse] = []
     active_policies: list[InsurancePolicyResponse] = []
+
+# Pagination 
+T = TypeVar("T")
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """List wrapper so the frontend can render 'Page 2 of 14'"""
+    items: list[T]
+    total: int = Field(..., ge=0)
+    page: int = Field(..., ge=1)
+    # ge=1 prevents a division by zero in total_pages below
+    page_size: int = Field(..., ge=1)
+
+    @computed_field
+    @property
+    def total_pages(self) -> int:
+        return max(1, -(-self.total // self.page_size))  # ceiling division
