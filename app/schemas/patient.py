@@ -207,3 +207,25 @@ class InsurancePolicyCreate(StrictModel):
         if start and v < start:
             raise ValueError("end_date cannot be before start_date")
         return v
+
+class InsurancePolicyResponse(BaseModel):
+    policy_id: int
+    patient_id: int
+    provider_id: int
+    provider_name: str  # comes from a JOIN with Insurance_Provider
+    policy_number: str
+    policy_type: PolicyTypeEnum
+    start_date: date
+    end_date: date
+    default_coverage_percentage: float
+    policy_status: PolicyStatusEnum
+
+    @computed_field
+    @property
+    def is_currently_valid(self) -> bool:
+        """The stored status alone can go stale (nothing flips 'Active' to
+        'Expired' on the end date), so a policy only counts as usable today
+        if it is Active AND today falls inside its date range"""
+        today = date.today()
+        return (self.policy_status == PolicyStatusEnum.Active
+            and self.start_date <= today <= self.end_date)
