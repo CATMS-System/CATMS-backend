@@ -1,8 +1,5 @@
 
-"""
-Pydantic schemas for Member 2's domain: Patient, Emergency_Contact,
-Insurance_Provider, Insurance_Policy.
-"""
+""" Pydantic schemas for Member 2's domain: Patient, Emergency_Contact, Insurance_Provider, Insurance_Policy """
 
 from pydantic import BaseModel, ConfigDict, Field, EmailStr, field_validator, computed_field
 from datetime import date, datetime
@@ -13,15 +10,14 @@ import re
 
 
 # Base Model
-
 class StrictModel(BaseModel):
     """Shared base for 'Create'/'Update' schemas: trims whitespace and
-    rejects unexpected fields (catches frontend typos)."""
+    rejects unexpected fields"""
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
 
 # Enums
-# Must match sql/01_schema.sql ENUM values exactly, including case.
+# matching sql/01_schema.sql ENUM values exactly, including case.
 
 class GenderEnum(str, Enum):
     Male = "Male"
@@ -48,7 +44,7 @@ PHONE_PATTERN = re.compile(r"^\+?\d[\d\s\-]{6,19}$")
 def normalize_phone(v: str) -> str:
     """Validates format and strips spaces/dashes to a consistent value.
     Not used for duplicate-blocking (Contact_Number isn't unique — family
-    members can share a phone), just for consistent storage."""
+    members can share a phone), just for consistent storage """
     if not PHONE_PATTERN.match(v):
         raise ValueError(
             "Phone number must be 7-20 digits, optionally starting with '+' "
@@ -63,7 +59,7 @@ def normalize_phone(v: str) -> str:
 
 def normalize_nic(v: str) -> str:
     """Validates Sri Lankan NIC format and uppercases the V/X suffix, so
-    '852140938v' and '852140938V' are treated as one value."""
+    '852140938v' and '852140938V' are treated as one value """
     v = v.strip().upper()
     if not re.match(r"^(\d{9}[VX]|\d{12})$", v):
         raise ValueError("NIC must be old format (9 digits + V or X) or new 12-digit format")
@@ -73,8 +69,7 @@ MIN_BIRTH_YEAR = date.today().year - 120
 
 
 def validate_dob(v: date) -> date:
-    """Rejects future dates and ages implying over 120 years — almost
-    always a typo (e.g. 1870 instead of 1990), not a real patient."""
+    """Rejects future dates and ages implying over 120 years — almost always a typo """
     if v > date.today():
         raise ValueError("Date of birth cannot be in the future")
     if v.year < MIN_BIRTH_YEAR:
@@ -85,7 +80,7 @@ SRI_LANKA_POSTAL_PATTERN = re.compile(r"^\d{5}$")
 
 
 def validate_postal(v: str) -> str:
-    """Sri Lankan postal codes are exactly 5 digits (e.g. '00300')."""
+    """Sri Lankan postal codes are exactly 5 digits"""
     if not SRI_LANKA_POSTAL_PATTERN.match(v):
         raise ValueError("Postal code must be exactly 5 digits")
     return v
@@ -94,9 +89,27 @@ MIN_POLICY_YEAR = 2000  # sanity floor — catches typos like "202" or "1926"
 MAX_POLICY_YEAR = date.today().year + 50  # sanity ceiling on end_date typos
 
 def validate_policy_year(v: date, field_name: str) -> date:
-    """Catches obvious typo years in insurance policy dates."""
+    """Catches obvious typo years in insurance policy dates"""
     if v.year < MIN_POLICY_YEAR:
         raise ValueError(f"{field_name} year looks like a typo (before {MIN_POLICY_YEAR})")
     if v.year > MAX_POLICY_YEAR:
         raise ValueError(f"{field_name} year looks like a typo (after {MAX_POLICY_YEAR})")
     return v
+
+# Emergency Contact
+class EmergencyContactCreate(StrictModel):
+    first_name: str = Field(..., min_length=1, max_length=50)
+    last_name: str = Field(..., min_length=1, max_length=50)
+    relationship_to_patient: str = Field(..., min_length=1, max_length=50)
+    contact_number: str
+    street_address: str | None = Field(None, max_length=150)
+    city: str | None = Field(None, max_length=50)
+    postal_code: str | None = Field(None, max_length=20)
+
+    @field_validator("contact_number")
+    def _phone(cls, v: str) -> str:
+        return normalize_phone(v)
+
+    @field_validator("postal_code")
+    def _postal(cls, v: str | None) -> str | None:
+        return validate_postal(v) if v is not None else v
