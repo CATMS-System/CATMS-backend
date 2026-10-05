@@ -21,6 +21,16 @@ class BranchBase(BaseModel):
 class BranchCreate(BranchBase):
     pass
 
+class BranchUpdate(BaseModel):
+    Branch_Name: Optional[str] = None
+    Street_Address: Optional[str] = None
+    City: Optional[str] = None
+    State_Province: Optional[str] = None
+    Postal_Code: Optional[str] = None
+    Contact_Number: Optional[str] = None
+    Email: Optional[EmailStr] = None
+    Manager_Staff_ID: Optional[int] = None
+
 class BranchResponse(BranchBase):
     Branch_ID: int
     model_config = ConfigDict(from_attributes=True)
@@ -37,6 +47,15 @@ class StaffBase(BaseModel):
 
 class StaffCreate(StaffBase):
     Account_ID: int
+
+class StaffUpdate(BaseModel):
+    First_Name: Optional[str] = None
+    Last_Name: Optional[str] = None
+    Job_Title: Optional[str] = None
+    Contact_Number: Optional[str] = None
+    Email: Optional[EmailStr] = None
+    Employment_Status: Optional[EmploymentStatusEnum] = None
+    Branch_ID: Optional[int] = None
 
 class StaffResponse(StaffBase):
     Staff_ID: int

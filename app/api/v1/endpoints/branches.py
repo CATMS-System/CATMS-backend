@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import pymysql
 from typing import List
 from app.db.connection import get_db
-from app.schemas.organization import BranchCreate, BranchResponse
+from app.schemas.organization import BranchCreate, BranchUpdate, BranchResponse
 from app.api.deps import require_roles
 from app.schemas.user import UserAccount, SystemRoleEnum
 
@@ -41,3 +41,32 @@ def create_branch(
         cursor.execute("SELECT * FROM Branch WHERE Branch_ID = LAST_INSERT_ID()")
         new_branch = cursor.fetchone()
     return BranchResponse(**new_branch)
+
+@router.put("/{branch_id}", response_model=BranchResponse)
+def update_branch(
+    branch_id: int,
+    branch_in: BranchUpdate,
+    db: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin]))
+):
+    """Update clinic branch details (Option C: PyMySQL)."""
+    update_data = branch_in.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No data provided to update")
+        
+    set_clause = ", ".join([f"{key} = %s" for key in update_data.keys()])
+    values = list(update_data.values())
+    values.append(branch_id)
+    
+    with db.cursor() as cursor:
+        cursor.execute("SELECT * FROM Branch WHERE Branch_ID = %s", (branch_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Branch not found")
+            
+        cursor.execute(f"UPDATE Branch SET {set_clause} WHERE Branch_ID = %s", tuple(values))
+        db.commit()
+        
+        cursor.execute("SELECT * FROM Branch WHERE Branch_ID = %s", (branch_id,))
+        updated_branch = cursor.fetchone()
+        
+    return BranchResponse(**updated_branch)
