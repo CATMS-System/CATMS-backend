@@ -147,9 +147,9 @@ class EmergencyContactResponse(BaseModel):
     postal_code: str | None
 
 # Insurance Provider
-def normalize_email(v: str | None) -> str | None:
+def normalize_email(v: str) -> str:
     """Emails are case-insensitive in practice; store them lowercase."""
-    return v.lower() if v is not None else v
+    return v.lower()
 
 class InsuranceProviderCreate(StrictModel):
     """Provider_Name and Email are UNIQUE in the DB; the service checks both
@@ -267,7 +267,7 @@ class PatientCreate(StrictModel):
 
     @field_validator("email")
     def _email(cls, v: str | None) -> str | None:
-        return normalize_email(v)
+        return normalize_email(v) if v is not None else v
 
 class PatientUpdate(StrictModel):
     """Partial update: only fields that are sent get changed
@@ -299,7 +299,7 @@ class PatientUpdate(StrictModel):
 
     @field_validator("email")
     def _email(cls, v: str | None) -> str | None:
-        return normalize_email(v)
+        return normalize_email(v) if v is not None else v
 
 class PatientSummaryResponse(BaseModel):
     """Lightweight row for search results (no nested data). Includes
