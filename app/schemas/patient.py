@@ -268,3 +268,35 @@ class PatientCreate(StrictModel):
     @field_validator("email")
     def _email(cls, v: str | None) -> str | None:
         return normalize_email(v)
+
+class PatientUpdate(StrictModel):
+    """Partial update: only fields that are sent get changed
+
+    nic / date_of_birth / gender are deliberately absent (locked after
+    registration); sending them is rejected by StrictModel
+
+    last_known_updated_at is REQUIRED: the client sends back the `updated_at`
+    it got from GET /patients/{id}. If someone else saved in between, the
+    service answers 409 instead of silently overwriting their change """
+    first_name: str | None = Field(None, min_length=1, max_length=50)
+    last_name: str | None = Field(None, min_length=1, max_length=50)
+    contact_number: str | None = None
+    email: EmailStr | None = None  # explicit null clears the email
+    street_address: str | None = Field(None, min_length=1, max_length=150)
+    city: str | None = Field(None, min_length=1, max_length=50)
+    state_province: str | None = Field(None, min_length=1, max_length=50)
+    postal_code: str | None = None
+    emergency_contact: EmergencyContactUpdate | None = None
+    last_known_updated_at: datetime
+
+    @field_validator("contact_number")
+    def _phone(cls, v: str | None) -> str | None:
+        return normalize_phone(v) if v is not None else v
+
+    @field_validator("postal_code")
+    def _postal(cls, v: str | None) -> str | None:
+        return validate_postal(v) if v is not None else v
+
+    @field_validator("email")
+    def _email(cls, v: str | None) -> str | None:
+        return normalize_email(v)
