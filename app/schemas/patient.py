@@ -145,3 +145,8 @@ class EmergencyContactResponse(BaseModel):
     street_address: str | None
     city: str | None
     postal_code: str | None
+
+# Insurance Provider
+def normalize_email(v: str | None) -> str | None:
+    """Emails are case-insensitive in practice; store them lowercase."""
+    return v.lower() if v is not None else v
