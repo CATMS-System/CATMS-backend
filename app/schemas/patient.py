@@ -183,3 +183,27 @@ class InsuranceProviderResponse(BaseModel):
     city: str
     state_province: str
     postal_code: str
+
+# Insurance Policy
+
+class InsurancePolicyCreate(StrictModel):
+    """Policy_Number is only unique PER PROVIDER. patient_id comes from the URL, never from the body, and
+    the status is set by the server """
+    provider_id: int = Field(..., gt=0)
+    policy_number: str = Field(..., min_length=1, max_length=50)
+    policy_type: PolicyTypeEnum
+    start_date: date
+    end_date: date
+    default_coverage_percentage: Decimal = Field(..., ge=0, le=100, decimal_places=2)
+
+    @field_validator("start_date")
+    def _start_sane(cls, v: date) -> date:
+        return validate_policy_year(v, "start_date")
+
+    @field_validator("end_date")
+    def _end_sane_and_ordered(cls, v: date, info) -> date:
+        v = validate_policy_year(v, "end_date")
+        start = info.data.get("start_date")
+        if start and v < start:
+            raise ValueError("end_date cannot be before start_date")
+        return v
