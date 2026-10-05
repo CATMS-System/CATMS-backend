@@ -65,6 +65,14 @@ class ConsultationCreate(BaseModel):
 # Response Schemas
 # ==============================================================================
 
+class ConsultationCreateResponse(BaseModel):
+    """Response returned upon successful consultation creation."""
+    consultation_id: int
+    invoice_id: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PrescribedItemOut(BaseModel):
     """Serialized prescribed treatment item returned from consultation query."""
     prescription_item_id: int
