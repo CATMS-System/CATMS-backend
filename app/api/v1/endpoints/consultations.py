@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 import pymysql
 
 from app.api.deps import get_db
-from app.schemas.consultation import ConsultationCreate, ConsultationCreateResponse
-from app.services.consultation_service import create_consultation
+from app.schemas.consultation import ConsultationCreate, ConsultationCreateResponse, ConsultationOut
+from app.services.consultation_service import create_consultation, get_consultation_by_id
 
 router = APIRouter()
 
@@ -70,3 +70,18 @@ def record_consultation(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred while creating consultation: {str(e)}"
         )
+
+
+@router.get("/{consultation_id}", response_model=ConsultationOut, status_code=status.HTTP_200_OK)
+def read_consultation(
+    consultation_id: int,
+    conn: pymysql.Connection = Depends(get_db)
+) -> ConsultationOut:
+    """
+    Retrieve full consultation details by ID via raw SQL joining Consultation,
+    Appointment, Patient, Doctor/Staff, Invoice, and Prescribed_Treatment/Treatment_Catalogue.
+    Returns ConsultationOut with items and line totals.
+    Raises 404 if consultation does not exist.
+    """
+    data = get_consultation_by_id(conn, consultation_id)
+    return ConsultationOut(**data)

@@ -5,8 +5,9 @@ Provides database operations and business logic for clinical consultations.
 Service functions receive a PyMySQL connection (`pymysql.Connection`) as a parameter.
 """
 
-from datetime import date
+from datetime import date, time, timedelta
 from decimal import Decimal
+import re
 from typing import Any, Dict, List, Optional, Union
 from fastapi import HTTPException, status
 import pymysql
@@ -314,3 +315,144 @@ def create_consultation(
     except Exception as e:
         conn.rollback()
         raise e
+
+
+def format_time_hh_mm(val: Any) -> Optional[str]:
+    """Converts a timedelta, time object, or time string to 'HH:MM' format."""
+    if isinstance(val, timedelta):
+        total_seconds = int(val.total_seconds())
+        hours = (total_seconds // 3600) % 24
+        minutes = (total_seconds % 3600) // 60
+        return f"{hours:02d}:{minutes:02d}"
+    elif isinstance(val, time):
+        return val.strftime("%H:%M")
+    elif isinstance(val, str):
+        return val[:5]
+    return None
+
+
+def parse_vitals_from_notes(clinical_notes: Optional[str]) -> Optional[VitalsIn]:
+    """Attempts to extract structured vitals from seed-style clinical notes prefix."""
+    if not clinical_notes or not clinical_notes.startswith("Vitals:"):
+        return None
+    try:
+        prefix = clinical_notes.split(".", 1)[0]
+        bp_match = re.search(r"BP\s+([0-9]+/[0-9]+)", prefix)
+        hr_match = re.search(r"HR\s+([0-9]+)", prefix)
+        temp_match = re.search(r"Temp\s+([0-9]+(?:\.[0-9]+)?)", prefix)
+        spo2_match = re.search(r"SpO2\s+([0-9]+)%", prefix)
+        weight_match = re.search(r"Weight\s+([0-9]+(?:\.[0-9]+)?)", prefix)
+
+        bp = bp_match.group(1) if bp_match else None
+        hr = int(hr_match.group(1)) if hr_match else None
+        temp = float(temp_match.group(1)) if temp_match else None
+        spo2 = int(spo2_match.group(1)) if spo2_match else None
+        weight = float(weight_match.group(1)) if weight_match else None
+
+        if any(v is not None for v in (bp, hr, temp, spo2, weight)):
+            return VitalsIn(bp=bp, heart_rate=hr, temperature=temp, spo2=spo2, weight=weight)
+    except Exception:
+        pass
+    return None
+
+
+def get_consultation_by_id(
+    conn: pymysql.Connection,
+    consultation_id: int
+) -> Dict[str, Any]:
+    """
+    Retrieves full clinical consultation details by ID via raw SQL joining Consultation,
+    Appointment, Patient, Doctor/Staff, Invoice, and Prescribed_Treatment/Treatment_Catalogue.
+    Converts any TIME column (e.g. Start_Time) from timedelta to 'HH:MM' string.
+    Raises HTTP 404 if not found.
+    """
+    with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+        query = """
+        SELECT 
+            c.Consultation_ID,
+            c.Appointment_ID,
+            c.Consultation_Date,
+            c.Diagnosis,
+            c.Clinical_Notes,
+            c.Doctor_Notes,
+            c.Follow_Up_Date,
+            a.Appointment_Date,
+            a.Start_Time,
+            CONCAT(p.First_Name, ' ', p.Last_Name) AS Patient_Name,
+            CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
+            i.Invoice_ID,
+            pt.Prescription_Item_ID,
+            pt.Treatment_ID,
+            tc.Service_Code,
+            tc.Treatment_Name,
+            pt.Quantity,
+            pt.Billed_Unit_Price,
+            ROUND(pt.Quantity * pt.Billed_Unit_Price, 2) AS Line_Total,
+            pt.Instructions
+        FROM Consultation c
+        JOIN Appointment a ON c.Appointment_ID = a.Appointment_ID
+        JOIN Patient p ON a.Patient_ID = p.Patient_ID
+        JOIN Doctor d ON a.Doctor_ID = d.Doctor_ID
+        JOIN Staff s ON d.Doctor_ID = s.Staff_ID
+        LEFT JOIN Invoice i ON c.Consultation_ID = i.Consultation_ID
+        LEFT JOIN Prescribed_Treatment pt ON c.Consultation_ID = pt.Consultation_ID
+        LEFT JOIN Treatment_Catalogue tc ON pt.Treatment_ID = tc.Treatment_ID
+        WHERE c.Consultation_ID = %s
+        ORDER BY pt.Prescription_Item_ID ASC
+        """
+        cursor.execute(query, (consultation_id,))
+        rows = cursor.fetchall()
+
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Consultation {consultation_id} not found"
+        )
+
+    first_row = rows[0]
+
+    # Convert any TIME column (such as Start_Time) from timedelta to "HH:MM"
+    start_time_val = first_row.get("Start_Time")
+    start_time_str = format_time_hh_mm(start_time_val) if start_time_val is not None else None
+
+    # Collect prescribed items with line totals
+    items_out: List[Dict[str, Any]] = []
+    if first_row.get("Prescription_Item_ID") is not None:
+        for r in rows:
+            qty = r["Quantity"]
+            unit_price = r["Billed_Unit_Price"]
+            line_tot = r.get("Line_Total")
+            if line_tot is None and qty is not None and unit_price is not None:
+                line_tot = Decimal(str(qty)) * unit_price
+
+            items_out.append({
+                "prescription_item_id": r["Prescription_Item_ID"],
+                "treatment_id": r["Treatment_ID"],
+                "service_code": r["Service_Code"],
+                "treatment_name": r["Treatment_Name"],
+                "quantity": qty,
+                "billed_unit_price": unit_price,
+                "line_total": line_tot,
+                "instructions": r.get("Instructions"),
+            })
+
+    # Optional vitals parse from notes
+    vitals_obj = parse_vitals_from_notes(first_row.get("Clinical_Notes"))
+
+    return {
+        "consultation_id": first_row["Consultation_ID"],
+        "appointment_id": first_row["Appointment_ID"],
+        "consultation_date": first_row["Consultation_Date"],
+        "diagnosis": first_row["Diagnosis"],
+        "clinical_notes": first_row["Clinical_Notes"],
+        "doctor_notes": first_row.get("Doctor_Notes"),
+        "follow_up_date": first_row.get("Follow_Up_Date"),
+        "patient_name": first_row["Patient_Name"],
+        "doctor_name": first_row["Doctor_Name"],
+        "appointment_date": first_row.get("Appointment_Date"),
+        "start_time": start_time_str,
+        "vitals": vitals_obj,
+        "items": items_out,
+        "invoice_id": first_row.get("Invoice_ID"),
+    }
+

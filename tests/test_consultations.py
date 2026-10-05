@@ -10,8 +10,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.main import app
 from app.db.connection import get_db_connection
-from app.schemas.consultation import ConsultationCreate, ConsultationCreateResponse, VitalsIn, PrescribedItemIn
-from app.api.v1.endpoints.consultations import record_consultation
+from app.schemas.consultation import ConsultationCreate, ConsultationCreateResponse, ConsultationOut, VitalsIn, PrescribedItemIn
+from app.api.v1.endpoints.consultations import record_consultation, read_consultation
 
 
 async def _dispatch_asgi(method: str, path: str, json_body: dict = None):
@@ -153,10 +153,55 @@ def test_post_consultation_error_mappings():
     print("Test Passed: Service errors mapped correctly (404, 409, 422).")
 
 
+def test_get_consultation_by_id_seeded_1():
+    """Verifies GET /api/v1/consultations/1 for seeded consultation 1."""
+    # Test via endpoint directly with PyMySQL connection
+    conn = get_db_connection()
+    try:
+        model: ConsultationOut = read_consultation(1, conn=conn)
+        assert model.consultation_id == 1
+        assert model.appointment_id == 1
+        assert model.patient_name == "John Doe"
+        assert model.doctor_name == "Alexander Bennett"
+        assert model.start_time == "09:00"
+        assert model.invoice_id == 1
+        assert len(model.items) == 2
+        assert model.items[0].service_code == "CARD-ECG-01"
+        assert model.items[0].line_total == Decimal("5000.00")
+        assert model.items[1].service_code == "LAB-LIPID-03"
+        assert model.items[1].line_total == Decimal("3500.00")
+    finally:
+        conn.close()
+
+    # Test via full ASGI HTTP request
+    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/1"))
+    assert status_code == 200, f"Expected 200, got {status_code}: {body}"
+    assert body["consultation_id"] == 1
+    assert body["patient_name"] == "John Doe"
+    assert body["doctor_name"] == "Alexander Bennett"
+    assert body["start_time"] == "09:00"
+    assert body["invoice_id"] == 1
+    assert len(body["items"]) == 2
+    assert Decimal(str(body["items"][0]["line_total"])) == Decimal("5000.00")
+    assert Decimal(str(body["items"][1]["line_total"])) == Decimal("3500.00")
+
+    print("Test Passed: GET /api/v1/consultations/1 returned 200 with patient, doctor, '09:00' start_time, items, and line totals.")
+
+
+def test_get_consultation_not_found():
+    """Verifies GET /api/v1/consultations/{consultation_id} returns 404 for nonexistent id."""
+    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/999999"))
+    assert status_code == 404, f"Expected 404, got {status_code}: {body}"
+    assert "not found" in body.get("detail", "").lower()
+    print("Test Passed: GET /api/v1/consultations/999999 returned 404 Not Found.")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("Running Consultation Module Tests")
     print("=" * 60)
+    test_get_consultation_by_id_seeded_1()
+    test_get_consultation_not_found()
     test_post_consultation_error_mappings()
     test_post_consultation_success_and_cleanup()
     print("=" * 60)

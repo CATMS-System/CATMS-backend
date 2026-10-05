@@ -109,6 +109,8 @@ class ConsultationOut(BaseModel):
     follow_up_date: Optional[date] = None
     patient_name: str
     doctor_name: str
+    appointment_date: Optional[date] = None
+    start_time: Optional[str] = None
     vitals: Optional[VitalsIn] = None
     items: List[PrescribedItemOut] = Field(default_factory=list)
     invoice_id: Optional[int] = None
