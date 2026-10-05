@@ -300,3 +300,14 @@ class PatientUpdate(StrictModel):
     @field_validator("email")
     def _email(cls, v: str | None) -> str | None:
         return normalize_email(v)
+
+class PatientSummaryResponse(BaseModel):
+    """Lightweight row for search results (no nested data). Includes
+    date_of_birth so same-named patients can be told apart at a glance"""
+    patient_id: int
+    first_name: str
+    last_name: str
+    date_of_birth: date
+    nic: str
+    contact_number: str
+    registration_date: date
