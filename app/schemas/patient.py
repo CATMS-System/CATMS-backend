@@ -229,3 +229,42 @@ class InsurancePolicyResponse(BaseModel):
         today = date.today()
         return (self.policy_status == PolicyStatusEnum.Active
             and self.start_date <= today <= self.end_date)
+
+# Patient
+class PatientCreate(StrictModel):
+    """No account_id here on purpose: a client must never choose which login
+    account a patient record is linked to. nic/date_of_birth/gender can only
+    be set here (they are not editable later)"""
+    first_name: str = Field(..., min_length=1, max_length=50)
+    last_name: str = Field(..., min_length=1, max_length=50)
+    date_of_birth: date
+    gender: GenderEnum
+    nic: str
+    contact_number: str
+    email: EmailStr | None = None
+    street_address: str = Field(..., min_length=1, max_length=150)
+    city: str = Field(..., min_length=1, max_length=50)
+    state_province: str = Field(..., min_length=1, max_length=50)
+    postal_code: str
+    emergency_contact: EmergencyContactCreate
+    insurance_policy: InsurancePolicyCreate | None = None  # saved atomically
+
+    @field_validator("nic")
+    def _nic(cls, v: str) -> str:
+        return normalize_nic(v)
+
+    @field_validator("contact_number")
+    def _phone(cls, v: str) -> str:
+        return normalize_phone(v)
+
+    @field_validator("date_of_birth")
+    def _dob(cls, v: date) -> date:
+        return validate_dob(v)
+
+    @field_validator("postal_code")
+    def _postal(cls, v: str) -> str:
+        return validate_postal(v)
+
+    @field_validator("email")
+    def _email(cls, v: str | None) -> str | None:
+        return normalize_email(v)
