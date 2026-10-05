@@ -150,3 +150,26 @@ class EmergencyContactResponse(BaseModel):
 def normalize_email(v: str | None) -> str | None:
     """Emails are case-insensitive in practice; store them lowercase."""
     return v.lower() if v is not None else v
+
+class InsuranceProviderCreate(StrictModel):
+    """Provider_Name and Email are UNIQUE in the DB; the service checks both
+    and returns 409 instead of a raw database error"""
+    provider_name: str = Field(..., min_length=1, max_length=100)
+    contact_number: str
+    email: EmailStr
+    street_address: str = Field(..., min_length=1, max_length=150)
+    city: str = Field(..., min_length=1, max_length=50)
+    state_province: str = Field(..., min_length=1, max_length=50)
+    postal_code: str
+
+    @field_validator("contact_number")
+    def _phone(cls, v: str) -> str:
+        return normalize_phone(v)
+
+    @field_validator("postal_code")
+    def _postal(cls, v: str) -> str:
+        return validate_postal(v)
+
+    @field_validator("email")
+    def _email(cls, v: str) -> str:
+        return normalize_email(v)
