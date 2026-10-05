@@ -311,3 +311,24 @@ class PatientSummaryResponse(BaseModel):
     nic: str
     contact_number: str
     registration_date: date
+
+class PatientDetailResponse(BaseModel):
+    """Full profile. Visit/appointment history is Member 3's domain and is intentionally not included here """
+    patient_id: int
+    first_name: str
+    last_name: str
+    date_of_birth: date
+    gender: GenderEnum
+    nic: str
+    contact_number: str
+    email: str | None
+    street_address: str
+    city: str
+    state_province: str
+    postal_code: str
+    registration_date: date
+    # The frontend reads this and sends it back as last_known_updated_at when it edits the patient (used to detect concurrent edits)
+    updated_at: datetime
+    # These reuse the response classes defined above, so those classes must stay above this one in the file
+    emergency_contacts: list[EmergencyContactResponse] = []
+    active_policies: list[InsurancePolicyResponse] = []
