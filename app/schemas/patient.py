@@ -134,3 +134,14 @@ class EmergencyContactUpdate(StrictModel):
     @field_validator("postal_code")
     def _postal(cls, v: str | None) -> str | None:
         return validate_postal(v) if v is not None else v
+
+class EmergencyContactResponse(BaseModel):
+    emergency_contact_id: int
+    patient_id: int
+    first_name: str
+    last_name: str
+    relationship_to_patient: str
+    contact_number: str
+    street_address: str | None
+    city: str | None
+    postal_code: str | None
