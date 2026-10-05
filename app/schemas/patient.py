@@ -173,3 +173,13 @@ class InsuranceProviderCreate(StrictModel):
     @field_validator("email")
     def _email(cls, v: str) -> str:
         return normalize_email(v)
+
+class InsuranceProviderResponse(BaseModel):
+    provider_id: int
+    provider_name: str
+    contact_number: str
+    email: str
+    street_address: str
+    city: str
+    state_province: str
+    postal_code: str
