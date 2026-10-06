@@ -43,7 +43,7 @@ PHONE_PATTERN = re.compile(r"^\+?\d[\d\s\-]{6,19}$")
 
 def normalize_phone(v: str) -> str:
     """Validates format and strips spaces/dashes to a consistent value.
-    Not used for duplicate-blocking (Contact_Number isn't unique — family
+    Not used for duplicate-blocking (Contact_Number isn't unique, family
     members can share a phone), just for consistent storage """
     if not PHONE_PATTERN.match(v):
         raise ValueError(
@@ -51,7 +51,7 @@ def normalize_phone(v: str) -> str:
             "and may contain spaces or dashes"
         )
     cleaned = re.sub(r"[\s\-]", "", v)
-    if len(cleaned) > 20:  # defensive: DB column is VARCHAR(20)
+    if len(cleaned) > 20:  # DB column is VARCHAR(20)
         raise ValueError("Phone number too long after normalization")
     return cleaned
 
@@ -69,7 +69,7 @@ MIN_BIRTH_YEAR = date.today().year - 120
 
 
 def validate_dob(v: date) -> date:
-    """Rejects future dates and ages implying over 120 years — almost always a typo """
+    """Rejects future dates and ages implying over 120 years which are almost always a typo """
     if v > date.today():
         raise ValueError("Date of birth cannot be in the future")
     if v.year < MIN_BIRTH_YEAR:
@@ -85,8 +85,8 @@ def validate_postal(v: str) -> str:
         raise ValueError("Postal code must be exactly 5 digits")
     return v
 
-MIN_POLICY_YEAR = 2000  # sanity floor — catches typos like "202" or "1926"
-MAX_POLICY_YEAR = date.today().year + 50  # sanity ceiling on end_date typos
+MIN_POLICY_YEAR = 2000  # earliset year accepted
+MAX_POLICY_YEAR = date.today().year + 50  # latest year
 
 def validate_policy_year(v: date, field_name: str) -> date:
     """Catches obvious typo years in insurance policy dates"""
