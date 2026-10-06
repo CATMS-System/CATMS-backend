@@ -1,6 +1,9 @@
 # helpers shared by the patient and insurance services
+import re
 from typing import Any
 
+import pymysql
+from fastapi import HTTPException
 
 # db columns look like Patient_ID but the schemas use patient_id
 def lower_keys(row: Any) -> dict | None:
@@ -18,3 +21,40 @@ def escape_like(text: str) -> str:
     text = text.replace("\\", "\\\\")
     text = text.replace("%", "\\%")
     return text.replace("_", "\\_")
+
+# turns a mysql error into an http error, returns None if we do not know the error
+def convert_db_error(error: pymysql.MySQLError) -> HTTPException | None:
+    error_code = error.args[0] if error.args else None
+    message = str(error.args[1]) if len(error.args) > 1 else str(error)
+
+    # 1062 = value already exists in a unique column
+    if error_code == 1062:
+        # the message names the key that broke
+        if "NIC" in message:
+            detail = "A patient with this NIC already exists"
+        elif "uq_policy_provider_number" in message:
+            detail = "This provider already has a policy with that policy number"
+        elif "Provider_Name" in message:
+            detail = "An insurance provider with this name already exists"
+        elif "Email" in message:
+            detail = "An insurance provider with this email already exists"
+        else:
+            detail = "Duplicate value for a unique field"
+        return HTTPException(409, detail)
+
+    # 1452 = foreign key points to a row that does not exist
+    if error_code == 1452:
+        return HTTPException(422, "A referenced record does not exist")
+
+    # 3819 = a CHECK rule in the table was broken, rule name is inside quotes
+    if error_code == 3819:
+        found = re.search(r"'([^']+)'", message)
+        rule = found.group(1) if found else "a check rule"
+        return HTTPException(422, f"Value breaks database rule: {rule}")
+
+    # 1048 null, 1264 and 1265 out of range or cut, 1366 wrong value, 1406 too long
+    if error_code in (1048, 1264, 1265, 1366, 1406):
+        return HTTPException(422, "A value is missing, too long or out of range")
+
+    # unknown error, the caller raises it again
+    return None
