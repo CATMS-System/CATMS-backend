@@ -94,6 +94,64 @@ class BillingService:
 
         return Decimal(consultation_fee) + Decimal(treatment_total)
 
+    def calculate_insurance_covered(self, invoice_id: int):
+        # Approved/settled insurance coverage.
+        with self.db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(
+                    SUM(Approved_Amount),
+                    0
+                ) AS Insurance_Covered
+                FROM Insurance_Claim
+                WHERE Invoice_ID = %s
+                  AND Claim_Status IN ('Approved', 'Settled')
+                """,
+                (invoice_id,)
+            )
+
+            result = cursor.fetchone()
+
+        return Decimal(result["Insurance_Covered"])
+
+
+    def get_invoice_details(self, invoice_id: int):
+        invoice = self.invoice_repository.get_by_id(invoice_id)
+        if invoice is None:
+            return None
+        consultation_id = invoice["Consultation_ID"]
+        with self.db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT pt.Treatment_ID, t.Service_Code, t.Treatment_Name,
+                       pt.Quantity, pt.Billed_Unit_Price,
+                       pt.Quantity * pt.Billed_Unit_Price AS Line_Total
+                FROM Prescribed_Treatment pt
+                JOIN Treatment_Catalogue t ON pt.Treatment_ID = t.Treatment_ID
+                WHERE pt.Consultation_ID = %s
+                ORDER BY pt.Prescription_Item_ID
+                """,
+                (consultation_id,)
+            )
+            treatments = cursor.fetchall()
+        consultation_fee = Decimal(invoice["Billed_Consultation_Fee"])
+        treatment_total = Decimal(self.calculate_treatment_total(consultation_id))
+        total_bill = consultation_fee + treatment_total
+        insurance_covered = self.calculate_insurance_covered(invoice_id)
+        patient_paid = Decimal(
+            self.payment_repository.get_total_completed_for_invoice(invoice_id)
+        )
+        return {
+            "invoice": invoice,
+            "treatments": treatments,
+            "consultation_fee": consultation_fee,
+            "total_treatment_charges": treatment_total,
+            "total_bill": total_bill,
+            "insurance_covered": insurance_covered,
+            "patient_paid": patient_paid,
+            "outstanding_balance": total_bill - insurance_covered - patient_paid,
+        }
+
     def record_payment(
         self,
         invoice_id: int,
@@ -132,26 +190,7 @@ class BillingService:
             )
         )
 
-        # Approved/settled insurance coverage.
-        with self.db.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT COALESCE(
-                    SUM(Approved_Amount),
-                    0
-                ) AS Insurance_Covered
-                FROM Insurance_Claim
-                WHERE Invoice_ID = %s
-                  AND Claim_Status IN ('Approved', 'Settled')
-                """,
-                (invoice_id,)
-            )
-
-            result = cursor.fetchone()
-
-        insurance_covered = Decimal(
-            result["Insurance_Covered"]
-        )
+        insurance_covered = self.calculate_insurance_covered(invoice_id)
 
         # Work out what is still owed.
         outstanding = (

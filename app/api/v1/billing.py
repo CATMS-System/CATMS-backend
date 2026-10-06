@@ -28,25 +28,11 @@ def get_invoice(
     invoice_id: int,
     db: pymysql.Connection = Depends(get_db)
 ):
-    invoice_repository = InvoiceRepository(db)
     billing_service = BillingService(db)
-
-    invoice = invoice_repository.get_by_id(invoice_id)
-
-    if invoice is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Invoice not found."
-        )
-
-    total_bill = billing_service.calculate_total_bill(
-        invoice["Consultation_ID"]
-    )
-
-    return {
-        "invoice": invoice,
-        "total_bill": total_bill
-    }
+    details = billing_service.get_invoice_details(invoice_id)
+    if details is None:
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    return details
 
 
 @router.post("/invoices/{invoice_id}/payments")

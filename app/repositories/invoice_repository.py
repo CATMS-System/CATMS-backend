@@ -10,9 +10,12 @@ class InvoiceRepository:
         with self.db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT *
-                FROM Invoice
-                ORDER BY Invoice_ID
+                SELECT i.*, b.Branch_ID, b.Branch_Name
+                FROM Invoice i
+                JOIN Consultation c ON i.Consultation_ID = c.Consultation_ID
+                JOIN Appointment a ON c.Appointment_ID = a.Appointment_ID
+                JOIN Branch b ON a.Branch_ID = b.Branch_ID
+                ORDER BY i.Invoice_ID
                 """
             )
 

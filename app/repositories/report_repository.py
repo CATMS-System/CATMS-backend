@@ -83,6 +83,7 @@ class ReportRepository:
                 b.Branch_Name,
 
                 COUNT(i.Invoice_ID) AS Total_Invoices,
+                COUNT(DISTINCT c.Consultation_ID) AS Total_Consultations,
 
                 COALESCE(
                     SUM(
