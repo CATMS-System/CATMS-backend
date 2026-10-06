@@ -1,5 +1,6 @@
 # helpers shared by the patient and insurance services
 import re
+from contextlib import contextmanager
 from typing import Any
 
 import pymysql
@@ -58,3 +59,27 @@ def convert_db_error(error: pymysql.MySQLError) -> HTTPException | None:
 
     # unknown error, the caller raises it again
     return None
+
+# use as: with transaction(conn):
+# saves everything if there is no error, undoes everything if there is one
+@contextmanager
+def transaction(conn: pymysql.Connection):
+    try:
+        yield
+        conn.commit()
+    except HTTPException:
+        # our own error (404, 409 ...), undo and pass it on
+        conn.rollback()
+        raise
+    except pymysql.MySQLError as error:
+        # database error, undo then try to make a clean http error
+        conn.rollback()
+        http_error = convert_db_error(error)
+        if http_error:
+            # "from error" keeps the original error in the traceback
+            raise http_error from error
+        raise
+    except Exception:
+        # any other bug, undo and pass it on
+        conn.rollback()
+        raise
