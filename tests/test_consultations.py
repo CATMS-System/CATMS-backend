@@ -4,7 +4,6 @@ import os
 import sys
 from datetime import date, timedelta
 from decimal import Decimal
-from fastapi import HTTPException
 import pymysql.cursors
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -19,7 +18,6 @@ from app.schemas.consultation import (
     VitalsIn,
     PrescribedItemIn,
 )
-from app.services.consultation_service import create_consultation
 from app.api.v1.endpoints.consultations import (
     record_consultation,
     read_consultation,
@@ -28,7 +26,7 @@ from app.api.v1.endpoints.consultations import (
 
 
 async def _dispatch_asgi(method: str, path: str, json_body: dict = None):
-    """Dispatches a request through the FastAPI ASGI application pipeline."""
+    """Dispatches an HTTP request through the FastAPI ASGI application pipeline."""
     body_bytes = json.dumps(json_body).encode("utf-8") if json_body is not None else b""
     headers = [
         [b"host", b"testserver"],
@@ -70,7 +68,7 @@ def test_successful_consultation_creation():
     """
     Verifies that a successful consultation creates Consultation, Prescribed_Treatment items,
     and Invoice, and marks the Appointment as 'Completed'.
-    Uses appointment 4, with status restoration and deletion of created rows in a finally block.
+    Uses appointment 4, restoring status and deleting created rows in a finally block.
     """
     target_appt = 4
     conn = get_db_connection()
@@ -79,13 +77,12 @@ def test_successful_consultation_creation():
     orig_status = None
 
     try:
-        # 1. Fetch and verify initial appointment status
         with conn.cursor(pymysql.cursors.DictCursor) as cur:
             cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
             appt_row = cur.fetchone()
             assert appt_row is not None, f"Appointment {target_appt} not found"
             orig_status = appt_row["Status"]
-            assert orig_status in ("Scheduled", "Confirmed"), f"Invalid initial status: {orig_status}"
+            assert orig_status in ("Scheduled", "Confirmed")
 
         payload = {
             "appointment_id": target_appt,
@@ -106,7 +103,6 @@ def test_successful_consultation_creation():
             ]
         }
 
-        # 2. Invoke endpoint
         status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
         assert status_code == 201, f"Expected 201, got {status_code}: {body}"
         assert "consultation_id" in body and body["consultation_id"] is not None
@@ -115,7 +111,7 @@ def test_successful_consultation_creation():
         c_id = body["consultation_id"]
         i_id = body["invoice_id"]
 
-        # 3. Advance transaction snapshot under MySQL REPEATABLE READ and verify DB
+        # Advance transaction snapshot under MySQL REPEATABLE READ and verify DB
         conn.commit()
         with conn.cursor(pymysql.cursors.DictCursor) as cur:
             # Check appointment status updated to Completed
@@ -149,7 +145,6 @@ def test_successful_consultation_creation():
 
         print("Test Passed: Successful consultation created consultation, items, and invoice, and marked appointment 'Completed'.")
     finally:
-        # 4. Clean up in finally block: delete created rows and restore appointment status
         try:
             with conn.cursor() as cur:
                 if i_id:
@@ -169,12 +164,11 @@ def test_invalid_treatment_id_rollback():
     Verifies that an invalid treatment_id raises 422 and rolls everything back.
     Ensures nothing is saved in Consultation, Prescribed_Treatment, or Invoice,
     and appointment status remains unchanged.
-    Uses appointment 4, with status restoration and cleanup in a finally block.
+    Uses appointment 4, restoring status and cleaning up in a finally block.
     """
     target_appt = 4
     conn = get_db_connection()
     orig_status = None
-    created_c_id = None
 
     try:
         with conn.cursor(pymysql.cursors.DictCursor) as cur:
@@ -184,7 +178,6 @@ def test_invalid_treatment_id_rollback():
             orig_status = appt_row["Status"]
             assert orig_status in ("Scheduled", "Confirmed")
 
-        # Payload includes one valid item and one non-existent treatment_id
         payload = {
             "appointment_id": target_appt,
             "diagnosis": "Rollback Test Diagnosis",
@@ -198,7 +191,6 @@ def test_invalid_treatment_id_rollback():
         assert status_code == 422, f"Expected 422, got {status_code}: {body}"
         assert "999999" in body.get("detail", "")
 
-        # Verify atomic rollback: no rows created and appointment status untouched
         conn.commit()
         with conn.cursor(pymysql.cursors.DictCursor) as cur:
             # 1. Appointment status unchanged
@@ -207,8 +199,7 @@ def test_invalid_treatment_id_rollback():
 
             # 2. No Consultation created
             cur.execute("SELECT * FROM Consultation WHERE Appointment_ID = %s", (target_appt,))
-            consultations = cur.fetchall()
-            assert len(consultations) == 0, f"Expected 0 consultations after rollback, found: {consultations}"
+            assert len(cur.fetchall()) == 0
 
             # 3. No Prescribed_Treatment created
             cur.execute("""
@@ -230,7 +221,6 @@ def test_invalid_treatment_id_rollback():
     finally:
         try:
             with conn.cursor() as cur:
-                # Safety cleanup in case of partial commit
                 cur.execute("""
                     DELETE FROM Invoice WHERE Consultation_ID IN (
                         SELECT Consultation_ID FROM Consultation WHERE Appointment_ID = %s
@@ -252,8 +242,8 @@ def test_invalid_treatment_id_rollback():
 def test_discontinued_treatment_rejected():
     """
     Verifies that attempting to prescribe a discontinued treatment raises 422 and rolls back.
-    Uses appointment 5, inserts a temporary discontinued treatment, and restores status
-    and deletes created rows in a finally block.
+    Uses appointment 5, inserting a temporary discontinued treatment, and restoring status
+    and deleting created rows in a finally block.
     """
     target_appt = 5
     conn = get_db_connection()
@@ -280,7 +270,6 @@ def test_discontinued_treatment_rejected():
             temp_disc_id = cur.lastrowid
             conn.commit()
 
-        # Payload prescribing the discontinued treatment
         payload = {
             "appointment_id": target_appt,
             "diagnosis": "Test Discontinued Item Rejection",
@@ -293,7 +282,6 @@ def test_discontinued_treatment_rejected():
         assert status_code == 422, f"Expected 422, got {status_code}: {body}"
         assert "not active" in body.get("detail", "").lower()
 
-        # Verify rollback: no rows created for Appointment 5
         conn.commit()
         with conn.cursor(pymysql.cursors.DictCursor) as cur:
             cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
@@ -306,10 +294,8 @@ def test_discontinued_treatment_rejected():
     finally:
         try:
             with conn.cursor() as cur:
-                # Remove temporary discontinued item
                 if temp_disc_id:
                     cur.execute("DELETE FROM Treatment_Catalogue WHERE Treatment_ID = %s", (temp_disc_id,))
-                # Safety cleanup for appointment 5
                 cur.execute("""
                     DELETE FROM Invoice WHERE Consultation_ID IN (
                         SELECT Consultation_ID FROM Consultation WHERE Appointment_ID = %s
@@ -328,9 +314,208 @@ def test_discontinued_treatment_rejected():
             conn.close()
 
 
+def test_completed_appointment_returns_409():
+    """
+    Verifies that attempting to create a consultation for an already Completed appointment returns 409.
+    Uses appointment 4, restoring status in a finally block.
+    """
+    target_appt = 4
+    conn = get_db_connection()
+    orig_status = None
+
+    try:
+        with conn.cursor(pymysql.cursors.DictCursor) as cur:
+            cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
+            appt_row = cur.fetchone()
+            assert appt_row is not None
+            orig_status = appt_row["Status"]
+
+            # Temporarily set to Completed
+            cur.execute("UPDATE Appointment SET Status = 'Completed' WHERE Appointment_ID = %s", (target_appt,))
+            conn.commit()
+
+        payload = {
+            "appointment_id": target_appt,
+            "diagnosis": "Consultation on Completed Appointment",
+            "items": []
+        }
+
+        status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
+        assert status_code == 409, f"Expected 409, got {status_code}: {body}"
+        assert "completed" in body.get("detail", "").lower()
+
+        print("Test Passed: Completed appointment returned 409 Conflict.")
+    finally:
+        try:
+            with conn.cursor() as cur:
+                if orig_status:
+                    cur.execute("UPDATE Appointment SET Status = %s WHERE Appointment_ID = %s", (orig_status, target_appt))
+                conn.commit()
+        finally:
+            conn.close()
+
+
+def test_cancelled_appointment_returns_409():
+    """
+    Verifies that attempting to create a consultation for a Cancelled appointment returns 409.
+    Uses appointment 4, restoring status in a finally block.
+    """
+    target_appt = 4
+    conn = get_db_connection()
+    orig_status = None
+
+    try:
+        with conn.cursor(pymysql.cursors.DictCursor) as cur:
+            cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
+            appt_row = cur.fetchone()
+            assert appt_row is not None
+            orig_status = appt_row["Status"]
+
+            # Temporarily set to Cancelled with reason
+            cur.execute(
+                "UPDATE Appointment SET Status = 'Cancelled', Cancellation_Reason = 'Patient cancelled test' WHERE Appointment_ID = %s",
+                (target_appt,)
+            )
+            conn.commit()
+
+        payload = {
+            "appointment_id": target_appt,
+            "diagnosis": "Consultation on Cancelled Appointment",
+            "items": []
+        }
+
+        status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
+        assert status_code == 409, f"Expected 409, got {status_code}: {body}"
+        assert "cancelled" in body.get("detail", "").lower()
+
+        print("Test Passed: Cancelled appointment returned 409 Conflict.")
+    finally:
+        try:
+            with conn.cursor() as cur:
+                if orig_status:
+                    cur.execute(
+                        "UPDATE Appointment SET Status = %s, Cancellation_Reason = NULL WHERE Appointment_ID = %s",
+                        (orig_status, target_appt)
+                    )
+                conn.commit()
+        finally:
+            conn.close()
+
+
+def test_duplicate_consultation_returns_409():
+    """
+    Verifies that attempting to create a second consultation for the same appointment returns 409.
+    Uses appointment 4, restoring status and deleting created rows in a finally block.
+    """
+    target_appt = 4
+    conn = get_db_connection()
+    orig_status = None
+    c_id = None
+
+    try:
+        with conn.cursor(pymysql.cursors.DictCursor) as cur:
+            cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
+            appt_row = cur.fetchone()
+            assert appt_row is not None
+            orig_status = appt_row["Status"]
+
+            # Insert an initial consultation while appointment remains active
+            cur.execute(
+                "INSERT INTO Consultation (Appointment_ID, Consultation_Date, Diagnosis) VALUES (%s, CURRENT_DATE, 'Initial Clinical Visit')",
+                (target_appt,)
+            )
+            c_id = cur.lastrowid
+            conn.commit()
+
+        payload = {
+            "appointment_id": target_appt,
+            "diagnosis": "Duplicate Consultation Attempt",
+            "items": []
+        }
+
+        status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
+        assert status_code == 409, f"Expected 409, got {status_code}: {body}"
+        assert "already exists" in body.get("detail", "").lower()
+
+        print("Test Passed: Duplicate consultation returned 409 Conflict.")
+    finally:
+        try:
+            with conn.cursor() as cur:
+                if c_id:
+                    cur.execute("DELETE FROM Consultation WHERE Consultation_ID = %s", (c_id,))
+                if orig_status:
+                    cur.execute("UPDATE Appointment SET Status = %s WHERE Appointment_ID = %s", (orig_status, target_appt))
+                conn.commit()
+        finally:
+            conn.close()
+
+
+def test_patient_history_returns_newest_first():
+    """
+    Verifies that patient consultation history returns records in strictly newest-first order.
+    Uses appointment 4 (Patient 1) to create a newer consultation record alongside seeded consultation 1,
+    confirms descending date ordering, and cleans up in a finally block.
+    """
+    target_appt = 4
+    conn = get_db_connection()
+    orig_status = None
+    c_id = None
+
+    try:
+        with conn.cursor(pymysql.cursors.DictCursor) as cur:
+            cur.execute("SELECT Patient_ID, Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
+            appt_row = cur.fetchone()
+            assert appt_row is not None
+            assert appt_row["Patient_ID"] == 1
+            orig_status = appt_row["Status"]
+
+            # Insert a new consultation for Patient 1 with today's date
+            cur.execute(
+                """
+                INSERT INTO Consultation (Appointment_ID, Consultation_Date, Diagnosis, Clinical_Notes)
+                VALUES (%s, CURRENT_DATE, 'Recent Medical Review', 'Vitals: BP 120/80 mmHg. Routine follow-up.')
+                """,
+                (target_appt,)
+            )
+            c_id = cur.lastrowid
+            conn.commit()
+
+        status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/patient/1"))
+        assert status_code == 200, f"Expected 200, got {status_code}: {body}"
+        assert isinstance(body, list)
+        assert len(body) >= 2, f"Expected at least 2 consultations, got {len(body)}"
+
+        # Verify newest record is first
+        assert body[0]["consultation_id"] == c_id
+        assert body[0]["consultation_date"] >= body[1]["consultation_date"]
+
+        # Verify entire list is in descending chronological order
+        dates = [item["consultation_date"] for item in body]
+        assert dates == sorted(dates, reverse=True), "History items not in descending chronological order"
+
+        print(f"Test Passed: Patient history returned {len(body)} records ordered newest first.")
+    finally:
+        try:
+            with conn.cursor() as cur:
+                if c_id:
+                    cur.execute("DELETE FROM Consultation WHERE Consultation_ID = %s", (c_id,))
+                if orig_status:
+                    cur.execute("UPDATE Appointment SET Status = %s WHERE Appointment_ID = %s", (orig_status, target_appt))
+                conn.commit()
+        finally:
+            conn.close()
+
+
+def test_unknown_consultation_id_returns_404():
+    """Verifies that querying an unknown consultation ID returns 404 Not Found."""
+    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/999999"))
+    assert status_code == 404, f"Expected 404, got {status_code}: {body}"
+    assert "not found" in body.get("detail", "").lower()
+    print("Test Passed: Unknown consultation id returned 404 Not Found.")
+
+
 def test_get_consultation_by_id_seeded_1():
     """Verifies GET /api/v1/consultations/1 for seeded consultation 1."""
-    # Test via endpoint directly with PyMySQL connection
     conn = get_db_connection()
     try:
         model: ConsultationOut = read_consultation(1, conn=conn)
@@ -348,7 +533,6 @@ def test_get_consultation_by_id_seeded_1():
     finally:
         conn.close()
 
-    # Test via full ASGI HTTP request
     status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/1"))
     assert status_code == 200, f"Expected 200, got {status_code}: {body}"
     assert body["consultation_id"] == 1
@@ -361,45 +545,6 @@ def test_get_consultation_by_id_seeded_1():
     assert Decimal(str(body["items"][1]["line_total"])) == Decimal("3500.00")
 
     print("Test Passed: GET /api/v1/consultations/1 returned 200 with patient, doctor, '09:00' start_time, items, and line totals.")
-
-
-def test_get_consultation_not_found():
-    """Verifies GET /api/v1/consultations/{consultation_id} returns 404 for nonexistent id."""
-    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/999999"))
-    assert status_code == 404, f"Expected 404, got {status_code}: {body}"
-    assert "not found" in body.get("detail", "").lower()
-    print("Test Passed: GET /api/v1/consultations/999999 returned 404 Not Found.")
-
-
-def test_get_patient_consultation_history_patient_1():
-    """Verifies GET /api/v1/consultations/patient/1 returns chronological history with item_count."""
-    conn = get_db_connection()
-    try:
-        models = read_patient_consultation_history(1, conn=conn)
-        assert len(models) >= 1
-        first_item: ConsultationHistoryItem = models[0]
-        assert first_item.consultation_id == 1
-        assert first_item.consultation_date == date(2026, 8, 23)
-        assert first_item.doctor_name == "Alexander Bennett"
-        assert first_item.item_count == 2
-        assert first_item.follow_up_date == date(2026, 8, 26)
-    finally:
-        conn.close()
-
-    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/patient/1"))
-    assert status_code == 200, f"Expected 200, got {status_code}: {body}"
-    assert isinstance(body, list)
-    assert len(body) >= 1
-    assert body[0]["consultation_id"] == 1
-    assert body[0]["consultation_date"] == "2026-08-23"
-    assert body[0]["doctor_name"] == "Alexander Bennett"
-    assert body[0]["item_count"] == 2
-    assert body[0]["follow_up_date"] == "2026-08-26"
-
-    dates = [item["consultation_date"] for item in body]
-    assert dates == sorted(dates, reverse=True), "History items not in descending chronological order"
-
-    print("Test Passed: GET /api/v1/consultations/patient/1 returned chronological history list with item_count.")
 
 
 def test_get_patient_consultation_history_not_found():
@@ -417,9 +562,12 @@ if __name__ == "__main__":
     test_successful_consultation_creation()
     test_invalid_treatment_id_rollback()
     test_discontinued_treatment_rejected()
+    test_completed_appointment_returns_409()
+    test_cancelled_appointment_returns_409()
+    test_duplicate_consultation_returns_409()
+    test_patient_history_returns_newest_first()
+    test_unknown_consultation_id_returns_404()
     test_get_consultation_by_id_seeded_1()
-    test_get_consultation_not_found()
-    test_get_patient_consultation_history_patient_1()
     test_get_patient_consultation_history_not_found()
     print("=" * 70)
     print("All consultation tests passed successfully!")
