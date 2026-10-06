@@ -115,7 +115,7 @@ class EmergencyContactCreate(StrictModel):
         return validate_postal(v) if v is not None else v
 
 class EmergencyContactUpdate(StrictModel):
-    """Edits ONE emergency contact. The id says which one, because a patient
+    """Edits one emergency contact. The id says which one, because a patient
     can have several. The service checks the contact really belongs to the
     patient being updated """
     emergency_contact_id: int = Field(..., gt=0)
@@ -187,7 +187,7 @@ class InsuranceProviderResponse(BaseModel):
 # Insurance Policy
 
 class InsurancePolicyCreate(StrictModel):
-    """Policy_Number is only unique PER PROVIDER. patient_id comes from the URL, never from the body, and
+    """Policy_Number is only unique per provider. patient_id comes from the URL, never from the body, and
     the status is set by the server """
     provider_id: int = Field(..., gt=0)
     policy_number: str = Field(..., min_length=1, max_length=50)
@@ -197,11 +197,11 @@ class InsurancePolicyCreate(StrictModel):
     default_coverage_percentage: Decimal = Field(..., ge=0, le=100, decimal_places=2)
 
     @field_validator("start_date")
-    def _start_sane(cls, v: date) -> date:
+    def _start_date(cls, v: date) -> date:
         return validate_policy_year(v, "start_date")
 
     @field_validator("end_date")
-    def _end_sane_and_ordered(cls, v: date, info) -> date:
+    def _end_date(cls, v: date, info) -> date:
         v = validate_policy_year(v, "end_date")
         start = info.data.get("start_date")
         if start and v < start:
