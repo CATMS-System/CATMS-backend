@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import Any
 
 import pymysql
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
 def lower_keys(row: Any) -> dict | None:
     """DB columns are Pascal_Case (Patient_ID), the API/schemas use
