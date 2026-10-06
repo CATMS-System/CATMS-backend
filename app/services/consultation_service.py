@@ -456,3 +456,63 @@ def get_consultation_by_id(
         "invoice_id": first_row.get("Invoice_ID"),
     }
 
+
+def get_patient_consultation_history(
+    conn: pymysql.Connection,
+    patient_id: int
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves chronological consultation history for a patient, ordered newest first.
+    Includes consultation ID, date, diagnosis, doctor name, follow-up date, and count of
+    prescribed treatment items.
+    Raises 404 if the patient does not exist.
+    """
+    with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+        # Verify patient exists
+        cursor.execute("SELECT Patient_ID FROM Patient WHERE Patient_ID = %s", (patient_id,))
+        patient = cursor.fetchone()
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Patient {patient_id} not found"
+            )
+
+        query = """
+        SELECT 
+            c.Consultation_ID,
+            c.Consultation_Date,
+            c.Diagnosis,
+            c.Follow_Up_Date,
+            CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
+            COUNT(pt.Prescription_Item_ID) AS item_count
+        FROM Consultation c
+        JOIN Appointment a ON c.Appointment_ID = a.Appointment_ID
+        JOIN Doctor d ON a.Doctor_ID = d.Doctor_ID
+        JOIN Staff s ON d.Doctor_ID = s.Staff_ID
+        LEFT JOIN Prescribed_Treatment pt ON c.Consultation_ID = pt.Consultation_ID
+        WHERE a.Patient_ID = %s
+        GROUP BY 
+            c.Consultation_ID,
+            c.Consultation_Date,
+            c.Diagnosis,
+            c.Follow_Up_Date,
+            s.First_Name,
+            s.Last_Name
+        ORDER BY c.Consultation_Date DESC, c.Consultation_ID DESC
+        """
+        cursor.execute(query, (patient_id,))
+        rows = cursor.fetchall()
+
+    return [
+        {
+            "consultation_id": r["Consultation_ID"],
+            "consultation_date": r["Consultation_Date"],
+            "diagnosis": r["Diagnosis"],
+            "doctor_name": r["Doctor_Name"],
+            "follow_up_date": r["Follow_Up_Date"],
+            "item_count": r["item_count"],
+        }
+        for r in rows
+    ]
+
+

@@ -5,12 +5,22 @@ Handles HTTP routes for recording clinical consultations, prescribing treatments
 and querying patient consultation history.
 """
 
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 import pymysql
 
 from app.api.deps import get_db
-from app.schemas.consultation import ConsultationCreate, ConsultationCreateResponse, ConsultationOut
-from app.services.consultation_service import create_consultation, get_consultation_by_id
+from app.schemas.consultation import (
+    ConsultationCreate,
+    ConsultationCreateResponse,
+    ConsultationHistoryItem,
+    ConsultationOut,
+)
+from app.services.consultation_service import (
+    create_consultation,
+    get_consultation_by_id,
+    get_patient_consultation_history,
+)
 
 router = APIRouter()
 
@@ -70,6 +80,20 @@ def record_consultation(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred while creating consultation: {str(e)}"
         )
+
+
+@router.get("/patient/{patient_id}", response_model=List[ConsultationHistoryItem], status_code=status.HTTP_200_OK)
+def read_patient_consultation_history(
+    patient_id: int,
+    conn: pymysql.Connection = Depends(get_db)
+) -> List[ConsultationHistoryItem]:
+    """
+    Retrieve chronological consultation history for a patient, ordered newest first.
+    Returns a list of ConsultationHistoryItem summaries with prescribed item counts.
+    Raises 404 if the patient is not found.
+    """
+    history = get_patient_consultation_history(conn, patient_id)
+    return [ConsultationHistoryItem(**item) for item in history]
 
 
 @router.get("/{consultation_id}", response_model=ConsultationOut, status_code=status.HTTP_200_OK)

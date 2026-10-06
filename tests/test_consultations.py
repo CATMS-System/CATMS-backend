@@ -10,8 +10,19 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.main import app
 from app.db.connection import get_db_connection
-from app.schemas.consultation import ConsultationCreate, ConsultationCreateResponse, ConsultationOut, VitalsIn, PrescribedItemIn
-from app.api.v1.endpoints.consultations import record_consultation, read_consultation
+from app.schemas.consultation import (
+    ConsultationCreate,
+    ConsultationCreateResponse,
+    ConsultationHistoryItem,
+    ConsultationOut,
+    VitalsIn,
+    PrescribedItemIn,
+)
+from app.api.v1.endpoints.consultations import (
+    record_consultation,
+    read_consultation,
+    read_patient_consultation_history,
+)
 
 
 async def _dispatch_asgi(method: str, path: str, json_body: dict = None):
@@ -196,12 +207,56 @@ def test_get_consultation_not_found():
     print("Test Passed: GET /api/v1/consultations/999999 returned 404 Not Found.")
 
 
+def test_get_patient_consultation_history_patient_1():
+    """Verifies GET /api/v1/consultations/patient/1 returns chronological history with item_count."""
+    # Test via endpoint directly with PyMySQL connection
+    conn = get_db_connection()
+    try:
+        models = read_patient_consultation_history(1, conn=conn)
+        assert len(models) >= 1
+        first_item: ConsultationHistoryItem = models[0]
+        assert first_item.consultation_id == 1
+        assert first_item.consultation_date == date(2026, 8, 23)
+        assert first_item.doctor_name == "Alexander Bennett"
+        assert first_item.item_count == 2
+        assert first_item.follow_up_date == date(2026, 8, 26)
+    finally:
+        conn.close()
+
+    # Test via full ASGI HTTP request
+    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/patient/1"))
+    assert status_code == 200, f"Expected 200, got {status_code}: {body}"
+    assert isinstance(body, list)
+    assert len(body) >= 1
+    assert body[0]["consultation_id"] == 1
+    assert body[0]["consultation_date"] == "2026-08-23"
+    assert body[0]["doctor_name"] == "Alexander Bennett"
+    assert body[0]["item_count"] == 2
+    assert body[0]["follow_up_date"] == "2026-08-26"
+
+    # Verify chronological order (newest first)
+    dates = [item["consultation_date"] for item in body]
+    assert dates == sorted(dates, reverse=True), "History items not in descending chronological order"
+
+    print("Test Passed: GET /api/v1/consultations/patient/1 returned chronological history list with item_count.")
+
+
+def test_get_patient_consultation_history_not_found():
+    """Verifies GET /api/v1/consultations/patient/{patient_id} returns 404 for nonexistent patient."""
+    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/patient/999999"))
+    assert status_code == 404, f"Expected 404, got {status_code}: {body}"
+    assert "not found" in body.get("detail", "").lower()
+    print("Test Passed: GET /api/v1/consultations/patient/999999 returned 404 Not Found.")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("Running Consultation Module Tests")
     print("=" * 60)
     test_get_consultation_by_id_seeded_1()
     test_get_consultation_not_found()
+    test_get_patient_consultation_history_patient_1()
+    test_get_patient_consultation_history_not_found()
     test_post_consultation_error_mappings()
     test_post_consultation_success_and_cleanup()
     print("=" * 60)
