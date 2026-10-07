@@ -10,6 +10,32 @@ from app.services.common import escape_like,lower_keys, lower_rows, transaction,
 PATIENT_COLS = "Patient_ID, First_Name, Last_Name, Date_Of_Birth, Gender, NIC, Contact_Number, Email, Street_Address, City, State_Province, Postal_Code, Registration_Date, Updated_At"
 EMERGENCY_COLS = "Emergency_Contact_ID, Patient_ID, First_Name, Last_Name, Relationship_To_Patient, Contact_Number, Street_Address, City, Postal_Code"
 
+# api field name -> db column
+# update queries only use column names from these dicts, never text from the client
+PATIENT_FIELDS = {
+    "first_name": "First_Name",
+    "last_name": "Last_Name",
+    "contact_number": "Contact_Number",
+    "email": "Email",
+    "street_address": "Street_Address",
+    "city": "City",
+    "state_province": "State_Province",
+    "postal_code": "Postal_Code",
+}
+# only email may be cleared, the other columns are NOT NULL in the table
+PATIENT_CAN_BE_NULL = {"email"}
+
+EMERGENCY_FIELDS = {
+    "first_name": "First_Name",
+    "last_name": "Last_Name",
+    "relationship_to_patient": "Relationship_To_Patient",
+    "contact_number": "Contact_Number",
+    "street_address": "Street_Address",
+    "city": "City",
+    "postal_code": "Postal_Code",
+}
+EMERGENCY_CAN_BE_NULL = {"street_address", "city", "postal_code"}
+
 # lock=True keeps the row locked until the transaction ends (FOR UPDATE)
 def get_patient_row(cursor, patient_id: int, lock: bool = False) -> dict | None:
     sql = f"SELECT {PATIENT_COLS} FROM Patient WHERE Patient_ID = %s"
@@ -159,3 +185,12 @@ def search_patients(conn: pymysql.Connection, search_text: str | None, page: int
         )
         items = lower_rows(cursor.fetchall())
     return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+# turns {"first_name": "A"} into {"First_Name": "A"}, null is only allowed for some fields
+def get_changes(sent_fields: dict, field_columns: dict, can_be_null: set, name: str) -> dict:
+    changes = {}
+    for field, value in sent_fields.items():
+        if value is None and field not in can_be_null:
+            raise HTTPException(422, f"{name} field '{field}' cannot be null")
+        changes[field_columns[field]] = value
+    return changes
