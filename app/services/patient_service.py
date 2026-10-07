@@ -177,10 +177,10 @@ def search_patients(conn: pymysql.Connection, search_text: str | None, page: int
         values["limit"] = page_size
         values["offset"] = (page - 1) * page_size
         cursor.execute(
-            "SELECT Patient_ID, First_Name, Last_Name, Date_Of_Birth, NIC, Contact_Number, Registration_Date"
-            "FROM Patient"
-            f"WHERE {where_text}"
-            "ORDER BY Last_Name, First_Name, Patient_ID"
+            "SELECT Patient_ID, First_Name, Last_Name, Date_Of_Birth, NIC, Contact_Number, Registration_Date "
+            "FROM Patient "
+            f"WHERE {where_text} "
+            "ORDER BY Last_Name, First_Name, Patient_ID "
             "LIMIT %(limit)s OFFSET %(offset)s", values,
         )
         items = lower_rows(cursor.fetchall())
