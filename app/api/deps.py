@@ -30,7 +30,7 @@ def get_current_user(db: pymysql.Connection = Depends(get_db), token: str = Depe
     if user_row is None:
         raise credentials_exception
         
-    user = UserAccount(**user_row)
+    user = UserAccount(**user_row)  # type: ignore
     if user.Account_Status != "Active":
         raise HTTPException(status_code=400, detail="Inactive user")
     return user
