@@ -95,3 +95,12 @@ def register_patient(
                 new_value=get_patient_row(cursor, patient_id),
             )
     return get_patient_detail(conn, patient_id)
+    
+# a stored number can be +94771234567 or 0771234567, so search both
+def get_phone_formats(number: str) -> list[str]:
+    formats = [number]
+    if number.startswith("+94"):
+        formats.append("0" + number[3:])
+    elif number.startswith("0"):
+        formats.append("+94" + number[1:])
+    return formats
