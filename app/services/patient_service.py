@@ -73,7 +73,7 @@ def register_patient(
             raise HTTPException(409, "A patient with this NIC already exists")
 
         cursor.execute(
-            "INSERT INTO Patient (First_Name, Last_Name, Date_Of_Birth, Gender, NIC, Contact_Number, Email, Street_Address, City, State_Province, Postal_Code)"
+            "INSERT INTO Patient (First_Name, Last_Name, Date_Of_Birth, Gender, NIC, Contact_Number, Email, Street_Address, City, State_Province, Postal_Code) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 data.first_name,
@@ -93,7 +93,7 @@ def register_patient(
 
         contact = data.emergency_contact
         cursor.execute(
-            "INSERT INTO Emergency_Contact (Patient_ID, First_Name, Last_Name, Relationship_To_Patient, Contact_Number, Street_Address, City, Postal_Code)"
+            "INSERT INTO Emergency_Contact (Patient_ID, First_Name, Last_Name, Relationship_To_Patient, Contact_Number, Street_Address, City, Postal_Code) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 patient_id,
