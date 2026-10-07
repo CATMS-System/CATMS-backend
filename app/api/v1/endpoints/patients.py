@@ -8,8 +8,8 @@ import pymysql
 from fastapi import APIRouter, Depends, Query, Path
 
 from app.api.deps import get_db
-from app.schemas.patient import (PaginatedResponse, PatientCreate, PatientDetailResponse, PatientSummaryResponse, PatientUpdate,)
-from app.services import patient_service
+from app.schemas.patient import (InsurancePolicyResponse, PaginatedResponse, PatientCreate, PatientDetailResponse, PatientSummaryResponse, PatientUpdate,)
+from app.services import patient_service, insurance_service
 
 router = APIRouter()
 
@@ -41,3 +41,7 @@ def update_patient(
     conn: pymysql.Connection = Depends(get_db),
 ):
     return patient_service.update_patient(conn, patient_id, data)
+
+@router.get("/{patient_id}/policies", response_model=list[InsurancePolicyResponse])
+def list_policies(patient_id: int = Path(..., ge=1), conn: pymysql.Connection = Depends(get_db)):
+    return insurance_service.list_patient_policies(conn, patient_id)
