@@ -3,7 +3,7 @@ import re
 import pymysql
 from fastapi import HTTPException
 
-from app.schemas.patient import PatientCreate
+from app.schemas.patient import PatientCreate, PatientUpdate
 from app.services import insurance_service
 from app.services.common import escape_like,lower_keys, lower_rows, transaction, write_audit
 
