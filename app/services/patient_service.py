@@ -140,3 +140,22 @@ def build_search_condition(search_text: str | None) -> tuple[str, dict]:
             values[key] = f"%{number}%"
 
     return "(" + " OR ".join(parts) + ")", values
+
+def search_patients(conn: pymysql.Connection, search_text: str | None, page: int, page_size: int) -> dict:
+    where_text, values = build_search_condition(search_text)
+    with conn.cursor() as cursor:
+        # number of matches, needed for the page count
+        cursor.execute(f"SELECT COUNT(*) AS total FROM Patient WHERE {where_text}", values)
+        total = cursor.fetchone()["total"]
+        # one page of results
+        values["limit"] = page_size
+        values["offset"] = (page - 1) * page_size
+        cursor.execute(
+            "SELECT Patient_ID, First_Name, Last_Name, Date_Of_Birth, NIC, Contact_Number, Registration_Date"
+            "FROM Patient"
+            f"WHERE {where_text}"
+            "ORDER BY Last_Name, First_Name, Patient_ID"
+            "LIMIT %(limit)s OFFSET %(offset)s", values,
+        )
+        items = lower_rows(cursor.fetchall())
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
