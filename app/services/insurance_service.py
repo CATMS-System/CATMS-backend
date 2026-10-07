@@ -105,3 +105,11 @@ def insert_policy(cursor, patient_id: int, data: InsurancePolicyCreate) -> int:
             data.default_coverage_percentage,
             policy_status,),)
     return cursor.lastrowid
+
+def get_policy(conn: pymysql.Connection, policy_id: int) -> dict:
+    with conn.cursor() as cursor:
+        cursor.execute(POLICY_SELECT + " WHERE ip.Policy_ID = %s", (policy_id,))
+        row = lower_keys(cursor.fetchone())
+    if not row:
+        raise HTTPException(404, "Policy not found")
+    return row
