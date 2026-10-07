@@ -1,0 +1,464 @@
+"""
+Automated unit and integration test suite for Appointment lifecycle,
+conflict prevention, walk-in triage, and queue management (Day 11).
+Option C: Plain PyMySQL + FastAPI TestClient.
+"""
+
+from datetime import date
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.db.connection import get_db_connection
+from app.services.appointment_service import (
+    book_appointment_atomic,
+    AppointmentConflictError,
+)
+
+
+
+@pytest.fixture(scope="module")
+def client():
+    return TestClient(app)
+
+
+@pytest.fixture(scope="function")
+def db_conn():
+    conn = get_db_connection()
+    yield conn
+    conn.close()
+
+
+@pytest.fixture(scope="function")
+def cleanup_records():
+    """Tracks created appointment IDs and cleans them up after each test."""
+    created_ids = []
+    yield created_ids
+    if created_ids:
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                format_strings = ",".join(["%s"] * len(created_ids))
+                cur.execute(f"DELETE FROM Appointment WHERE Appointment_ID IN ({format_strings})", tuple(created_ids))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+# ============================================================================
+# Task 1: Standard Appointment Booking
+# ============================================================================
+
+def test_case_1_standard_appointment_booking_service(db_conn, cleanup_records):
+    """
+    Day 11 - Test Case 1 (Service Layer):
+    Verifies book_appointment_atomic creates a standard appointment record
+    with atomic commit, correct initial status 'Scheduled', and joined relations.
+    """
+    test_date = date(2026, 12, 1)
+    test_time = "10:00:00"
+
+    appt = book_appointment_atomic(
+        conn=db_conn,
+        patient_id=1,
+        doctor_id=1,
+        branch_id=1,
+        appointment_date=test_date,
+        start_time=test_time,
+        duration_minutes=30,
+        appointment_type="Standard",
+        reason_for_visit="Routine cardiological checkup",
+        schedule_id=1,
+    )
+
+    assert appt is not None
+    assert appt["Appointment_ID"] > 0
+    cleanup_records.append(appt["Appointment_ID"])
+
+    assert appt["Patient_ID"] == 1
+    assert appt["Patient_Name"] == "John Doe"
+    assert appt["Doctor_ID"] == 1
+    assert appt["Doctor_Name"] == "Alexander Bennett"
+    assert appt["Branch_ID"] == 1
+    assert appt["Branch_Name"] == "Colombo Main Clinic"
+    assert appt["Status"] == "Scheduled"
+    assert appt["Appointment_Type"] == "Standard"
+    assert appt["Duration_Minutes"] == 30
+    assert appt["Schedule_ID"] == 1
+
+
+def test_case_1_standard_appointment_booking_api(client, cleanup_records):
+    """
+    Day 11 - Test Case 1 (API Layer):
+    Verifies POST /api/v1/appointments returns HTTP 201 Created
+    with serialized appointment payload.
+    """
+    payload = {
+        "patient_id": 2,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": "2026-12-01",
+        "start_time": "11:00:00",
+        "duration_minutes": 30,
+        "appointment_type": "Standard",
+        "reason_for_visit": "Hypertension consultation",
+    }
+    response = client.post("/api/v1/appointments", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["Appointment_ID"] > 0
+    cleanup_records.append(data["Appointment_ID"])
+    assert data["Status"] == "Scheduled"
+    assert data["Doctor_Name"] == "Alexander Bennett"
+    assert "11:00:00" in str(data["Start_Time"])
+
+
+# ============================================================================
+# Task 2: Overlapping Appointment Booking Conflict (HTTP 409)
+# ============================================================================
+
+def test_case_2_overlapping_appointment_booking_service(db_conn, cleanup_records):
+    """
+    Day 11 - Test Case 2 (Service Layer):
+    Verifies that attempting to book an overlapping slot raises AppointmentConflictError.
+    Tests partial overlap: candidate [14:15, 14:45] vs existing [14:00, 14:30].
+    """
+    test_date = date(2026, 12, 2)
+    initial = book_appointment_atomic(
+        conn=db_conn,
+        patient_id=1,
+        doctor_id=1,
+        branch_id=1,
+        appointment_date=test_date,
+        start_time="14:00:00",
+        duration_minutes=30,
+        appointment_type="Standard",
+        reason_for_visit="First visit",
+    )
+    cleanup_records.append(initial["Appointment_ID"])
+
+    with pytest.raises(AppointmentConflictError) as exc_info:
+        book_appointment_atomic(
+            conn=db_conn,
+            patient_id=2,
+            doctor_id=1,
+            branch_id=1,
+            appointment_date=test_date,
+            start_time="14:15:00",
+            duration_minutes=30,
+            appointment_type="Standard",
+            reason_for_visit="Conflicting visit",
+        )
+    assert "overlapping appointment" in str(exc_info.value).lower()
+
+
+def test_case_2_overlapping_appointment_booking_api(client, cleanup_records):
+    """
+    Day 11 - Test Case 2 (API Layer):
+    Verifies POST /api/v1/appointments returns HTTP 409 Conflict
+    when slot is already booked for the same doctor.
+    """
+    test_date = "2026-12-03"
+    res1 = client.post("/api/v1/appointments", json={
+        "patient_id": 1,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "09:00:00",
+        "duration_minutes": 30,
+        "appointment_type": "Standard",
+        "reason_for_visit": "Seeded booking",
+    })
+    assert res1.status_code == 201
+    cleanup_records.append(res1.json()["Appointment_ID"])
+
+    res2 = client.post("/api/v1/appointments", json={
+        "patient_id": 2,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "09:20:00",
+        "duration_minutes": 30,
+        "appointment_type": "Standard",
+        "reason_for_visit": "Colliding booking",
+    })
+    assert res2.status_code == 409
+    assert "overlapping appointment" in res2.json()["detail"].lower()
+
+
+def test_adjacent_slots_do_not_collide(db_conn, cleanup_records):
+    """
+    Verifies back-to-back adjacent slots (e.g. 10:00-10:30 and 10:30-11:00)
+    do NOT trigger collision error.
+    """
+    test_date = date(2026, 12, 4)
+    appt1 = book_appointment_atomic(
+        conn=db_conn,
+        patient_id=1,
+        doctor_id=1,
+        branch_id=1,
+        appointment_date=test_date,
+        start_time="10:00:00",
+        duration_minutes=30,
+        appointment_type="Standard",
+        reason_for_visit="First slot",
+    )
+    cleanup_records.append(appt1["Appointment_ID"])
+
+    appt2 = book_appointment_atomic(
+        conn=db_conn,
+        patient_id=2,
+        doctor_id=1,
+        branch_id=1,
+        appointment_date=test_date,
+        start_time="10:30:00",
+        duration_minutes=30,
+        appointment_type="Standard",
+        reason_for_visit="Adjacent slot",
+    )
+    cleanup_records.append(appt2["Appointment_ID"])
+    assert appt2["Appointment_ID"] > 0
+
+
+# ============================================================================
+# Task 3: Emergency Walk-In Booking
+# ============================================================================
+
+def test_case_3_emergency_walk_in_booking_service(db_conn, cleanup_records):
+    """
+    Day 11 - Test Case 3 (Service Layer):
+    Verifies walk-in creation succeeds with null schedule (Schedule_ID = None),
+    Appointment_Type = 'Walk_In', and immediate Status = 'Confirmed'.
+    """
+    test_date = date(2026, 12, 5)
+    walk_in = book_appointment_atomic(
+        conn=db_conn,
+        patient_id=3,
+        doctor_id=1,
+        branch_id=1,
+        appointment_date=test_date,
+        start_time="15:30:00",
+        duration_minutes=15,
+        appointment_type="Walk_In",
+        reason_for_visit="[Critical Urgency] Severe dizziness and collapse",
+        schedule_id=None,
+    )
+
+    assert walk_in is not None
+    assert walk_in["Appointment_ID"] > 0
+    cleanup_records.append(walk_in["Appointment_ID"])
+
+    assert walk_in["Appointment_Type"] == "Walk_In"
+    assert walk_in["Status"] == "Confirmed"
+    assert walk_in["Schedule_ID"] is None
+    assert "[Critical Urgency]" in walk_in["Reason_For_Visit"]
+
+
+def test_case_3_emergency_walk_in_booking_api(client, cleanup_records):
+    """
+    Day 11 - Test Case 3 (API Layer):
+    Verifies POST /api/v1/appointments/walk-in succeeds with 201 Created,
+    populating triage urgency badge, Schedule_ID=None, and Status=Confirmed.
+    """
+    payload = {
+        "patient_id": 4,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "reason_for_visit": "High fever and dehydration",
+        "duration_minutes": 20,
+        "triage_urgency": "High",
+        "appointment_date": "2026-12-05",
+        "start_time": "16:00:00",
+    }
+    res = client.post("/api/v1/appointments/walk-in", json=payload)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["Appointment_ID"] > 0
+    cleanup_records.append(data["Appointment_ID"])
+
+    assert data["Appointment_Type"] == "Walk_In"
+    assert data["Status"] == "Confirmed"
+    assert data["Schedule_ID"] is None
+    assert "[High Urgency]" in data["Reason_For_Visit"]
+
+
+# ============================================================================
+# Task 4: Rescheduling to Occupied Slot is Rejected
+# ============================================================================
+
+def test_case_4_reschedule_occupied_slot_rejected(client, cleanup_records):
+    """
+    Day 11 - Test Case 4 (API Layer):
+    Verifies PUT /api/v1/appointments/{id}/reschedule is rejected with HTTP 409 Conflict
+    when target slot is occupied by another booking.
+    """
+    test_date = "2026-12-06"
+    res_a = client.post("/api/v1/appointments", json={
+        "patient_id": 1,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "09:00:00",
+        "duration_minutes": 30,
+        "reason_for_visit": "Booking A",
+    })
+    assert res_a.status_code == 201
+    appt_a_id = res_a.json()["Appointment_ID"]
+    cleanup_records.append(appt_a_id)
+
+    res_b = client.post("/api/v1/appointments", json={
+        "patient_id": 2,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "11:00:00",
+        "duration_minutes": 30,
+        "reason_for_visit": "Booking B",
+    })
+    assert res_b.status_code == 201
+    appt_b_id = res_b.json()["Appointment_ID"]
+    cleanup_records.append(appt_b_id)
+
+    res_resched = client.put(f"/api/v1/appointments/{appt_b_id}/reschedule", json={
+        "new_date": test_date,
+        "new_start_time": "09:15:00",
+        "duration_minutes": 30,
+        "reschedule_reason": "Trying to move to earlier occupied slot",
+    })
+    assert res_resched.status_code == 409
+    assert "overlapping appointment" in res_resched.json()["detail"].lower()
+
+
+def test_reschedule_self_exclusion_succeeds(client, cleanup_records):
+    """
+    Verifies that rescheduling an appointment within its own time range
+    (e.g., shifting 15 minutes forward) does NOT self-collide.
+    """
+    test_date = "2026-12-07"
+    res = client.post("/api/v1/appointments", json={
+        "patient_id": 1,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "10:00:00",
+        "duration_minutes": 45,
+        "reason_for_visit": "Self exclusion test",
+    })
+    assert res.status_code == 201
+    appt_id = res.json()["Appointment_ID"]
+    cleanup_records.append(appt_id)
+
+    res_shift = client.put(f"/api/v1/appointments/{appt_id}/reschedule", json={
+        "new_date": test_date,
+        "new_start_time": "10:15:00",
+        "duration_minutes": 30,
+        "reschedule_reason": "Doctor delayed slightly",
+    })
+    assert res_shift.status_code == 200
+    updated = res_shift.json()
+    assert "10:15:00" in str(updated["Start_Time"])
+    assert updated["Duration_Minutes"] == 30
+
+
+# ============================================================================
+# Additional Tests: Lifecycle & Live Queue Ordering
+# ============================================================================
+
+def test_cancellation_and_protection_guards(client, cleanup_records):
+    """
+    Verifies appointment cancellation records audit reason,
+    and prevents double cancellation or rescheduling of cancelled records.
+    """
+    test_date = "2026-12-08"
+    res = client.post("/api/v1/appointments", json={
+        "patient_id": 1,
+        "doctor_id": 1,
+        "branch_id": 1,
+        "appointment_date": test_date,
+        "start_time": "14:00:00",
+        "duration_minutes": 20,
+        "reason_for_visit": "Audit cancel test",
+    })
+    assert res.status_code == 201
+    appt_id = res.json()["Appointment_ID"]
+    cleanup_records.append(appt_id)
+
+    # 1. Cancel appointment
+    cancel_res = client.put(f"/api/v1/appointments/{appt_id}/cancel", json={
+        "cancellation_reason": "Patient rescheduled to next month via phone",
+    })
+    assert cancel_res.status_code == 200
+    assert cancel_res.json()["Status"] == "Cancelled"
+
+    # 2. Cannot cancel again
+    cancel_again = client.put(f"/api/v1/appointments/{appt_id}/cancel", json={
+        "cancellation_reason": "Duplicate cancel attempt",
+    })
+    assert cancel_again.status_code == 400
+    assert "already cancelled" in cancel_again.json()["detail"].lower()
+
+    # 3. Cannot reschedule a cancelled appointment
+    resched_cancelled = client.put(f"/api/v1/appointments/{appt_id}/reschedule", json={
+        "new_date": test_date,
+        "new_start_time": "15:00:00",
+    })
+    assert resched_cancelled.status_code == 400
+    assert "cannot reschedule a cancelled appointment" in resched_cancelled.json()["detail"].lower()
+
+
+def test_live_clinic_queue_ordering(client, cleanup_records):
+    """
+    Verifies GET /api/v1/appointments/queue returns active queue ordered chronologically
+    with sequential token numbers and correct wait estimations.
+    """
+    test_date = "2026-12-09"
+    # Patient 1: 08:30 (Duration 15)
+    p1 = client.post("/api/v1/appointments", json={
+        "patient_id": 1, "doctor_id": 1, "branch_id": 1,
+        "appointment_date": test_date, "start_time": "08:30:00",
+        "duration_minutes": 15, "reason_for_visit": "Queue Patient 1"
+    }).json()
+    cleanup_records.append(p1["Appointment_ID"])
+
+    # Patient 2 (Walk-In): 08:45 (Duration 20)
+    p2 = client.post("/api/v1/appointments/walk-in", json={
+        "patient_id": 2, "doctor_id": 1, "branch_id": 1,
+        "appointment_date": test_date, "start_time": "08:45:00",
+        "duration_minutes": 20, "reason_for_visit": "Walk-in Patient 2",
+        "triage_urgency": "Normal"
+    }).json()
+    cleanup_records.append(p2["Appointment_ID"])
+
+    # Patient 3: 09:15 (Duration 30)
+    p3 = client.post("/api/v1/appointments", json={
+        "patient_id": 3, "doctor_id": 1, "branch_id": 1,
+        "appointment_date": test_date, "start_time": "09:15:00",
+        "duration_minutes": 30, "reason_for_visit": "Queue Patient 3"
+    }).json()
+    cleanup_records.append(p3["Appointment_ID"])
+
+    # Query Queue
+    res_queue = client.get(f"/api/v1/appointments/queue?branch_id=1&date={test_date}")
+    assert res_queue.status_code == 200
+    items = res_queue.json()
+    assert len(items) >= 3
+
+    # Position 1
+    assert items[0]["Queue_Number"] == 1
+    assert items[0]["Appointment_ID"] == p1["Appointment_ID"]
+    assert items[0]["Estimated_Wait_Minutes"] == 0
+
+    # Position 2
+    assert items[1]["Queue_Number"] == 2
+    assert items[1]["Appointment_ID"] == p2["Appointment_ID"]
+    assert items[1]["Appointment_Type"] == "Walk_In"
+    assert items[1]["Estimated_Wait_Minutes"] == 15
+
+    # Position 3
+    assert items[2]["Queue_Number"] == 3
+    assert items[2]["Appointment_ID"] == p3["Appointment_ID"]
+    assert items[2]["Estimated_Wait_Minutes"] == 35  # 15 + 20
+
+
+
+
