@@ -121,3 +121,11 @@ def attach_policy(conn: pymysql.Connection, patient_id: int, data: InsurancePoli
             raise HTTPException(404, "Patient not found")
         policy_id = insert_policy(cursor, patient_id, data)
     return get_policy(conn, policy_id)
+
+def list_patient_policies(conn: pymysql.Connection, patient_id: int) -> list[dict]:
+    with conn.cursor() as cursor:
+        # 404 if the patient does not exist
+        cursor.execute("SELECT Patient_ID FROM Patient WHERE Patient_ID = %s", (patient_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Patient not found")
+        return get_policies(cursor, patient_id)
