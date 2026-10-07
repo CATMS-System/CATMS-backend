@@ -1,4 +1,5 @@
 # helpers shared by the patient and insurance services
+import json
 import re
 from contextlib import contextmanager
 from typing import Any
@@ -83,3 +84,26 @@ def transaction(conn: pymysql.Connection):
         # any other bug, undo and pass it on
         conn.rollback()
         raise
+
+# saves one row in Audit_Log, does nothing when there is no logged in user yet
+def write_audit(
+    cursor,
+    account_id: int | None,
+    table_name: str,
+    record_id: int,
+    action: str,
+    old_value: dict | None = None,
+    new_value: dict | None = None,
+    branch_id: int | None = None,) -> None:
+    if account_id is None:
+        return
+
+    # old and new values are saved as json text, dates are turned into strings
+    old_json = json.dumps(old_value, default=str) if old_value is not None else None
+    new_json = json.dumps(new_value, default=str) if new_value is not None else None
+
+    cursor.execute(
+        "INSERT INTO Audit_Log (Account_ID, Branch_ID, Table_Name, Record_ID, "
+        "Action_Type, Old_Value, New_Value) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (account_id, branch_id, table_name, str(record_id), action, old_json, new_json),
+    )
