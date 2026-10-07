@@ -123,3 +123,124 @@ def test_search_phone_in_local_and_international_format(client, db, created):
     for text in ["0773216543", "+94773216543", "077 321 6543", "+94 77 321 6543", "773216543"]:
         items = client.get("/api/v1/patients", params={"query": text}).json()["items"]
         assert any(row["nic"] == nic for row in items), f"'{text}' did not find the patient"
+
+def test_search_treats_wildcards_as_normal_text(client, make_patient):
+    make_patient()
+    total_patients = client.get("/api/v1/patients").json()["total"]
+    for text in ["%", "_", "%%%"]:
+        total_found = client.get("/api/v1/patients", params={"query": text}).json()["total"]
+        assert total_found < total_patients
+
+
+def test_search_with_no_match_and_with_no_text(client, make_patient):
+    nothing = client.get("/api/v1/patients", params={"query": "qqqqnomatchqqqq"}).json()
+    assert nothing["items"] == []
+    assert nothing["total"] == 0
+    assert nothing["total_pages"] == 1
+
+    make_patient()
+    everyone = client.get("/api/v1/patients", params={"page_size": 100}).json()
+    assert everyone["total"] >= len(everyone["items"]) >= 1
+
+
+def test_search_pages(client, make_patient):
+    last_name = "Pagetest"
+    for _ in range(3):
+        make_patient(last_name=last_name)
+    params = {"query": last_name, "page_size": 2}
+    page_1 = client.get("/api/v1/patients", params={**params, "page": 1}).json()
+    page_2 = client.get("/api/v1/patients", params={**params, "page": 2}).json()
+    assert page_1["total"] == 3
+    assert page_1["total_pages"] == 2
+    assert len(page_1["items"]) == 2
+    assert len(page_2["items"]) == 1
+    ids_1 = {row["patient_id"] for row in page_1["items"]}
+    ids_2 = {row["patient_id"] for row in page_2["items"]}
+    assert not ids_1 & ids_2
+
+
+def test_search_page_limits(client):
+    assert client.get("/api/v1/patients", params={"page": 0}).status_code == 422
+    assert client.get("/api/v1/patients", params={"page_size": 101}).status_code == 422
+    assert client.get("/api/v1/patients", params={"page_size": 0}).status_code == 422
+
+
+def test_search_sql_injection_does_nothing(client):
+    response = client.get("/api/v1/patients", params={"query": "x' OR '1'='1"})
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+
+
+def test_get_patient(client, make_patient):
+    patient = make_patient()
+    response = client.get(f"/api/v1/patients/{patient['patient_id']}")
+    assert response.status_code == 200
+    assert response.json()["nic"] == patient["nic"]
+    assert client.get("/api/v1/patients/99999999").status_code == 404
+    assert client.get("/api/v1/patients/0").status_code == 422
+    assert client.get("/api/v1/patients/abc").status_code == 422
+
+
+def test_active_status_with_a_past_end_date_is_not_valid(client, db, make_patient, make_provider):
+    # nothing in the database changes Active to Expired by itself
+    patient = make_patient()
+    provider = make_provider()
+    with db.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO Insurance_Policy (Patient_ID, Provider_ID, Policy_Number, Policy_Type, "
+            "Start_Date, End_Date, Default_Coverage_Percentage, Policy_Status) "
+            "VALUES (%s, %s, 'STALE-1', 'Comprehensive', '2020-01-01', '2021-01-01', 70.00, 'Active')",
+            (patient["patient_id"], provider["provider_id"]),
+        )
+    db.commit()
+
+    detail = client.get(f"/api/v1/patients/{patient['patient_id']}").json()
+    assert detail["active_policies"] == []
+    policies = client.get(f"/api/v1/patients/{patient['patient_id']}/policies").json()
+    assert policies[0]["policy_status"] == "Active"
+    assert policies[0]["is_currently_valid"] is False
+
+
+def put(client, patient_id, **body):
+    return client.put(f"/api/v1/patients/{patient_id}", json=body)
+
+
+def test_update_changes_fields_and_updated_at(client, make_patient):
+    patient = make_patient()
+    response = put(
+        client,
+        patient["patient_id"],
+        first_name="Renamed",
+        city="Kandy",
+        last_known_updated_at=patient["updated_at"],
+    )
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert updated["first_name"] == "Renamed"
+    assert updated["city"] == "Kandy"
+    # fields that were not sent stay the same
+    assert updated["last_name"] == patient["last_name"]
+    assert updated["nic"] == patient["nic"]
+    assert updated["updated_at"] != patient["updated_at"]
+
+
+def test_update_with_an_old_timestamp_returns_409(client, make_patient):
+    patient = make_patient()
+    old_time = patient["updated_at"]
+    first = put(client, patient["patient_id"], city="Galle", last_known_updated_at=old_time)
+    assert first.status_code == 200
+    second = put(client, patient["patient_id"], city="Jaffna", last_known_updated_at=old_time)
+    assert second.status_code == 409
+    saved = client.get(f"/api/v1/patients/{patient['patient_id']}").json()
+    assert saved["city"] == "Galle"
+
+
+def test_update_with_the_same_values_still_changes_updated_at(client, make_patient):
+    patient = make_patient()
+    updated = put(
+        client,
+        patient["patient_id"],
+        city=patient["city"],
+        last_known_updated_at=patient["updated_at"],
+    ).json()
+    assert updated["updated_at"] != patient["updated_at"]
