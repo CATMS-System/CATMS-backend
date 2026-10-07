@@ -1,10 +1,11 @@
 # patient logic, raw sql with pymysql
+import re
 import pymysql
 from fastapi import HTTPException
 
 from app.schemas.patient import PatientCreate
 from app.services import insurance_service
-from app.services.common import lower_keys, lower_rows, transaction, write_audit
+from app.services.common import escape_like,lower_keys, lower_rows, transaction, write_audit
 
 PATIENT_COLS = "Patient_ID, First_Name, Last_Name, Date_Of_Birth, Gender, NIC, Contact_Number, Email, Street_Address, City, State_Province, Postal_Code, Registration_Date, Updated_At"
 EMERGENCY_COLS = "Emergency_Contact_ID, Patient_ID, First_Name, Last_Name, Relationship_To_Patient, Contact_Number, Street_Address, City, Postal_Code"
@@ -95,7 +96,7 @@ def register_patient(
                 new_value=get_patient_row(cursor, patient_id),
             )
     return get_patient_detail(conn, patient_id)
-    
+
 # a stored number can be +94771234567 or 0771234567, so search both
 def get_phone_formats(number: str) -> list[str]:
     formats = [number]
@@ -104,3 +105,38 @@ def get_phone_formats(number: str) -> list[str]:
     elif number.startswith("0"):
         formats.append("+94" + number[1:])
     return formats
+
+# makes the where part of the search, matches name, nic, phone or patient id
+def build_search_condition(search_text: str | None) -> tuple[str, dict]:
+    text = (search_text or "").strip()
+    if not text:
+        # no text, match every patient
+        return "1 = 1", {}
+
+    values = {"like": f"%{escape_like(text)}%"}
+    parts = [  "First_Name LIKE %(like)s",
+               "Last_Name LIKE %(like)s",
+               "CONCAT(First_Name, ' ', Last_Name) LIKE %(like)s",
+    ]
+
+    # only digits, so it could be a patient id
+    if text.isdigit():
+        parts.append("Patient_ID = %(patient_id)s")
+        values["patient_id"] = int(text)
+
+    # remove spaces and dashes so 077 123 4567 and 077-123-4567 are the same
+    cleaned = re.sub(r"[\s\-]", "", text)
+
+    # nic looks like 852140938V or 199012345678
+    if re.fullmatch(r"\d{3,12}[VvXx]?", cleaned):
+        parts.append("NIC LIKE %(nic)s")
+        values["nic"] = f"%{cleaned}%"
+
+    # phone number, spaces and dashes are removed from the stored number too
+    if re.fullmatch(r"\+?\d{3,}", cleaned):
+        for i, number in enumerate(get_phone_formats(cleaned)):
+            key = f"phone{i}"
+            parts.append(f"REPLACE(REPLACE(Contact_Number, ' ', ''), '-', '') LIKE %({key})s")
+            values[key] = f"%{number}%"
+
+    return "(" + " OR ".join(parts) + ")", values
