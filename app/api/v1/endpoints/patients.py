@@ -5,7 +5,7 @@
 # register, update, attach policy: Admin and Receptionist
 # search and read: Admin, Branch_Manager, Receptionist, Doctor
 import pymysql
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Path
 
 from app.api.deps import get_db
 from app.schemas.patient import (PaginatedResponse, PatientCreate, PatientDetailResponse, PatientSummaryResponse,)
@@ -28,3 +28,7 @@ def search_patients(
     conn: pymysql.Connection = Depends(get_db),
 ):
     return patient_service.search_patients(conn, query, page, page_size)
+
+@router.get("/{patient_id}", response_model=PatientDetailResponse)
+def get_patient(patient_id: int = Path(..., ge=1), conn: pymysql.Connection = Depends(get_db)):
+    return patient_service.get_patient_detail(conn, patient_id)
