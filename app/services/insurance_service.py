@@ -1,8 +1,9 @@
 # insurance providers and patient policies
+from datetime import date
 import pymysql
 from fastapi import HTTPException
 
-from app.schemas.patient import InsuranceProviderCreate
+from app.schemas.patient import InsurancePolicyCreate, InsuranceProviderCreate
 from app.services.common import lower_keys, lower_rows, transaction
 PROVIDER_COLS = (
     "Provider_ID, Provider_Name, Contact_Number, Email, "
@@ -73,3 +74,34 @@ def get_policies(cursor, patient_id: int, only_active: bool = False) -> list[dic
     sql += " ORDER BY ip.End_Date DESC, ip.Policy_ID DESC"
     cursor.execute(sql, (patient_id,))
     return lower_rows(cursor.fetchall())
+
+# no commit in here, the caller commits (so registration can add a policy in the same transaction)
+def insert_policy(cursor, patient_id: int, data: InsurancePolicyCreate) -> int:
+    # provider must exist
+    cursor.execute(
+        "SELECT Provider_ID FROM Insurance_Provider WHERE Provider_ID = %s", (data.provider_id,))
+    if not cursor.fetchone():
+        raise HTTPException(404, "Insurance provider not found")
+
+    # policy number only has to be new for this provider, not for everyone
+    cursor.execute(
+        "SELECT Policy_ID FROM Insurance_Policy WHERE Provider_ID = %s AND Policy_Number = %s",
+        (data.provider_id, data.policy_number),)
+    if cursor.fetchone():
+        raise HTTPException(409, "This provider already has a policy with that policy number")
+
+    # a policy that already ended is saved as Expired
+    policy_status = "Expired" if data.end_date < date.today() else "Active"
+    cursor.execute(
+        "INSERT INTO Insurance_Policy (Patient_ID, Provider_ID, Policy_Number, "
+        "Policy_Type, Start_Date, End_Date, Default_Coverage_Percentage, Policy_Status) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+        ( patient_id,
+            data.provider_id,
+            data.policy_number,
+            data.policy_type.value,
+            data.start_date,
+            data.end_date,
+            data.default_coverage_percentage,
+            policy_status,),)
+    return cursor.lastrowid
