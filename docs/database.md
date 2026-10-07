@@ -180,3 +180,91 @@ Or with Uvicorn:
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+---
+
+## 7. Common Issues & Troubleshooting
+
+1. **Access Denied (`1045`)**:
+   Verify the username and password in `.env` match the credentials configured in TiDB Cloud or MySQL Workbench.
+2. **Database Not Found (`1049`)**:
+   Ensure `CatMS` has been created by executing `CREATE DATABASE IF NOT EXISTS CatMS;` from `schema.sql`.
+3. **Authentication Plugin Error**:
+   If an error regarding `caching_sha2_password` occurs, ensure `cryptography` is installed (`pip install cryptography`).
+
+---
+
+## 8. Doctor, Schedule & Appointment Query Reference
+
+### 8.1 Doctors and Assigned Specialties
+```sql
+SELECT 
+    d.Doctor_ID,
+    CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
+    s.Contact_Number,
+    s.Email,
+    b.Branch_Name AS Home_Branch,
+    d.License_Number,
+    d.Standard_Consultation_Fee,
+    GROUP_CONCAT(spec.Specialty_Name SEPARATOR ', ') AS Specialties
+FROM Doctor d
+JOIN Staff s ON d.Doctor_ID = s.Staff_ID
+JOIN Branch b ON s.Branch_ID = b.Branch_ID
+LEFT JOIN Doctor_Specialty ds ON d.Doctor_ID = ds.Doctor_ID
+LEFT JOIN Specialty spec ON ds.Specialty_ID = spec.Specialty_ID
+GROUP BY d.Doctor_ID, s.First_Name, s.Last_Name, s.Contact_Number, s.Email, b.Branch_Name, d.License_Number, d.Standard_Consultation_Fee;
+```
+
+### 8.2 Doctor Weekly Schedules by Branch
+```sql
+SELECT 
+    ds.Schedule_ID,
+    CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
+    b.Branch_Name AS Schedule_Branch,
+    ds.Day_Of_Week,
+    ds.Start_Time,
+    ds.End_Time,
+    ds.Availability_Status
+FROM Doctor_Schedule ds
+JOIN Doctor d ON ds.Doctor_ID = d.Doctor_ID
+JOIN Staff s ON d.Doctor_ID = s.Staff_ID
+JOIN Branch b ON ds.Branch_ID = b.Branch_ID
+ORDER BY d.Doctor_ID, FIELD(ds.Day_Of_Week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
+```
+
+### 8.3 Doctor Appointment Slot Collision Check
+```sql
+SELECT 
+    Appointment_ID,
+    Doctor_ID,
+    Appointment_Date,
+    Start_Time,
+    ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60)) AS End_Time,
+    Status
+FROM Appointment
+WHERE Doctor_ID = %s
+  AND Appointment_Date = %s
+  AND Status IN ('Scheduled', 'Confirmed')
+  AND (
+      (%s < ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))) AND
+      (%s > Start_Time)
+  );
+```
+
+---
+
+## 9. Appointment Collision Prevention & Engine Compatibility
+
+### 9.1 MySQL 8.0 Trigger
+For evaluation against standard MySQL 8.0 / MariaDB, the trigger script is provided in:
+`database/triggers/trg_check_appointment_overlap.sql`
+
+It enforces:
+- `BEFORE INSERT` and `BEFORE UPDATE` collision validation on `Appointment`.
+- Calculates candidate end time using `ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))`.
+- Prevents double-booking by raising `SIGNAL SQLSTATE '45000'`.
+
+### 9.2 Distributed TiDB Cloud Compatibility
+TiDB Cloud Serverless utilizes a distributed consensus architecture where server-side SQL triggers are disabled by design. To maintain 100% ACID conflict protection across all database engines:
+- The collision logic is implemented in `app/services/appointment_service.py` (`check_doctor_appointment_overlap`).
+- Executed atomically using plain PyMySQL connections before inserting or updating appointment records.
