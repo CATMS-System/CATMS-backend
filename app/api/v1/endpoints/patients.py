@@ -8,7 +8,7 @@ import pymysql
 from fastapi import APIRouter, Depends, Query, Path
 
 from app.api.deps import get_db
-from app.schemas.patient import (PaginatedResponse, PatientCreate, PatientDetailResponse, PatientSummaryResponse,)
+from app.schemas.patient import (PaginatedResponse, PatientCreate, PatientDetailResponse, PatientSummaryResponse, PatientUpdate,)
 from app.services import patient_service
 
 router = APIRouter()
@@ -32,3 +32,12 @@ def search_patients(
 @router.get("/{patient_id}", response_model=PatientDetailResponse)
 def get_patient(patient_id: int = Path(..., ge=1), conn: pymysql.Connection = Depends(get_db)):
     return patient_service.get_patient_detail(conn, patient_id)
+
+# client sends last_known_updated_at, the updated_at it got from the get route
+@router.put("/{patient_id}", response_model=PatientDetailResponse)
+def update_patient(
+    data: PatientUpdate,
+    patient_id: int = Path(..., ge=1),
+    conn: pymysql.Connection = Depends(get_db),
+):
+    return patient_service.update_patient(conn, patient_id, data)
