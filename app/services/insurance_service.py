@@ -8,7 +8,15 @@ PROVIDER_COLS = (
     "Provider_ID, Provider_Name, Contact_Number, Email, "
     "Street_Address, City, State_Province, Postal_Code"
 )
-
+# policy columns plus the provider name, so the frontend does not need a second request
+POLICY_SELECT = """
+    SELECT ip.Policy_ID, ip.Patient_ID, ip.Provider_ID,
+           pr.Provider_Name AS provider_name, ip.Policy_Number, ip.Policy_Type,
+           ip.Start_Date, ip.End_Date, ip.Default_Coverage_Percentage,
+           ip.Policy_Status
+    FROM Insurance_Policy ip
+    JOIN Insurance_Provider pr ON pr.Provider_ID = ip.Provider_ID
+"""
 
 def get_provider(conn: pymysql.Connection, provider_id: int) -> dict:
     with conn.cursor() as cursor:
@@ -52,3 +60,16 @@ def create_provider(conn: pymysql.Connection, data: InsuranceProviderCreate) -> 
             data.postal_code,),)
         provider_id = cursor.lastrowid
     return get_provider(conn, provider_id)
+
+# all policies of a patient, or only the ones that can be used today
+def get_policies(cursor, patient_id: int, only_active: bool = False) -> list[dict]:
+    sql = POLICY_SELECT + " WHERE ip.Patient_ID = %s"
+    if only_active:
+        # usable = status Active and today is between start date and end date
+        sql += (
+            " AND ip.Policy_Status = 'Active'"
+            " AND ip.Start_Date <= CURDATE() AND ip.End_Date >= CURDATE()"
+        )
+    sql += " ORDER BY ip.End_Date DESC, ip.Policy_ID DESC"
+    cursor.execute(sql, (patient_id,))
+    return lower_rows(cursor.fetchall())
