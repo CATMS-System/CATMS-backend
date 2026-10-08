@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 import pymysql
 from app.api.deps import get_db
-from app.api.v1.endpoints import auth, branches, staff, audit
+from app.api.v1.endpoints import auth, branches, staff, audit, insurance, patients
 
 api_router = APIRouter()
 
@@ -39,6 +39,10 @@ api_router.include_router(branches.router, prefix="/branches", tags=["Branches"]
 api_router.include_router(staff.router, prefix="/staff", tags=["Staff"])
 api_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit Logs"])
 # api_router.include_router(patients.router, prefix="/patients", tags=["Patients"])
+
+api_router.include_router(patients.router, prefix="/patients", tags=["Patients"])
+api_router.include_router(insurance.router, prefix="/insurance", tags=["Insurance"])
+
 # api_router.include_router(consultations.router, prefix="/consultations", tags=["Consultations"])
 # api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
 # api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
