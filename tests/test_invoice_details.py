@@ -7,7 +7,7 @@ from app.db.connection import get_db_connection
 from app.repositories.invoice_repository import InvoiceRepository
 from app.repositories.report_repository import ReportRepository
 from app.services.billing_service import BillingService
-from app.api.v1.billing import get_invoice
+from app.api.v1.endpoints.billing import get_invoice
 from fastapi import HTTPException
 
 
@@ -65,9 +65,11 @@ def test_details_preserve_negative_balance_and_empty_treatments():
     service = BillingService(db)
     service.invoice_repository.get_by_id = MagicMock(return_value={"Invoice_ID": 1, "Consultation_ID": 2, "Billed_Consultation_Fee": Decimal('100')})
     db.cursor.return_value.__enter__.return_value.fetchall.return_value = []
-    service.calculate_treatment_total = MagicMock(return_value=Decimal('0'))
-    service.calculate_insurance_covered = MagicMock(return_value=Decimal('80'))
-    service.payment_repository.get_total_completed_for_invoice = MagicMock(return_value=Decimal('30'))
+    service.invoice_repository.get_summary = MagicMock(return_value={
+        "Billed_Consultation_Fee": Decimal('100'), "Total_Treatments_Fee": Decimal('0'),
+        "Invoice_Total": Decimal('100'), "Insurance_Covered": Decimal('80'),
+        "Patient_Paid": Decimal('30'), "Outstanding_Balance": Decimal('-10'),
+    })
     details = service.get_invoice_details(1)
     assert details["treatments"] == []
     assert details["outstanding_balance"] == Decimal('-10')
@@ -100,3 +102,38 @@ def test_doctor_consultation_count_uses_existing_invoice_scope(db):
         filtered = ReportRepository(db).get_doctor_revenue(start, end, row["Branch_ID"])
         assert row in filtered
     assert not ReportRepository(db).get_doctor_revenue(date(1900, 1, 1), date(1900, 1, 1))
+
+
+def test_doctor_revenue_view_preserves_original_totals_and_branch_filters(db):
+    start, end = date(2000, 1, 1), date(2100, 1, 1)
+    # Independent calculation from base tables checks view integration compatibility.
+    with db.cursor() as cursor:
+        cursor.execute("""
+            SELECT d.Doctor_ID, CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
+                   b.Branch_ID, b.Branch_Name,
+                   COUNT(i.Invoice_ID) AS Total_Invoices,
+                   COUNT(DISTINCT c.Consultation_ID) AS Total_Consultations,
+                   COALESCE(SUM(i.Billed_Consultation_Fee + COALESCE((
+                       SELECT SUM(pt.Quantity * pt.Billed_Unit_Price)
+                       FROM Prescribed_Treatment pt WHERE pt.Consultation_ID = c.Consultation_ID
+                   ), 0)), 0) AS Gross_Revenue,
+                   COALESCE(SUM(COALESCE((
+                       SELECT SUM(p.Amount) FROM Payment p
+                       WHERE p.Invoice_ID = i.Invoice_ID AND p.Payment_Status = 'Completed'
+                   ), 0)), 0) AS Collected_Revenue
+            FROM Invoice i
+            JOIN Consultation c ON c.Consultation_ID = i.Consultation_ID
+            JOIN Appointment a ON a.Appointment_ID = c.Appointment_ID
+            JOIN Doctor d ON d.Doctor_ID = a.Doctor_ID
+            JOIN Staff s ON s.Staff_ID = d.Doctor_ID
+            JOIN Branch b ON b.Branch_ID = a.Branch_ID
+            WHERE i.Invoice_Date BETWEEN %s AND %s
+            GROUP BY d.Doctor_ID, s.First_Name, s.Last_Name, b.Branch_ID, b.Branch_Name
+        """, (start, end))
+        expected = cursor.fetchall()
+    repository = ReportRepository(db)
+    key = lambda row: (row["Doctor_ID"], row["Branch_ID"])
+    assert sorted(repository.get_doctor_revenue(start, end), key=key) == sorted(expected, key=key)
+    for branch_id in {row["Branch_ID"] for row in expected}:
+        filtered = [row for row in expected if row["Branch_ID"] == branch_id]
+        assert sorted(repository.get_doctor_revenue(start, end, branch_id), key=key) == sorted(filtered, key=key)

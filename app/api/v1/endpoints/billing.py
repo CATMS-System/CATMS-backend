@@ -47,7 +47,7 @@ def record_payment(
         result = billing_service.record_payment(
             invoice_id=invoice_id,
             amount=payment_data.amount,
-            payment_method=payment_data.payment_method,
+            payment_method=payment_data.payment_method.value,
             transaction_reference=payment_data.transaction_reference
         )
 

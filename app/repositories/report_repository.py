@@ -85,20 +85,10 @@ class ReportRepository:
                 COUNT(i.Invoice_ID) AS Total_Invoices,
                 COUNT(DISTINCT c.Consultation_ID) AS Total_Consultations,
 
-                COALESCE(
-                    SUM(
-                        i.Billed_Consultation_Fee
-                        + COALESCE(t.Treatment_Total, 0)
-                    ),
-                    0
-                ) AS Gross_Revenue,
+                COALESCE(SUM(i.Invoice_Total), 0) AS Gross_Revenue,
+                COALESCE(SUM(i.Patient_Paid), 0) AS Collected_Revenue
 
-                COALESCE(
-                    SUM(COALESCE(p.Total_Paid, 0)),
-                    0
-                ) AS Collected_Revenue
-
-            FROM Invoice i
+            FROM vw_Invoice_Summary i
 
             JOIN Consultation c
                 ON i.Consultation_ID = c.Consultation_ID
@@ -114,27 +104,6 @@ class ReportRepository:
 
             JOIN Branch b
                 ON a.Branch_ID = b.Branch_ID
-
-            LEFT JOIN (
-                SELECT
-                    Consultation_ID,
-                    SUM(
-                        Quantity * Billed_Unit_Price
-                    ) AS Treatment_Total
-                FROM Prescribed_Treatment
-                GROUP BY Consultation_ID
-            ) t
-                ON c.Consultation_ID = t.Consultation_ID
-
-            LEFT JOIN (
-                SELECT
-                    Invoice_ID,
-                    SUM(Amount) AS Total_Paid
-                FROM Payment
-                WHERE Payment_Status = 'Completed'
-                GROUP BY Invoice_ID
-            ) p
-                ON i.Invoice_ID = p.Invoice_ID
 
             WHERE i.Invoice_Date BETWEEN %s AND %s
         """

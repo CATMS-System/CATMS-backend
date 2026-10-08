@@ -2,6 +2,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
+import pymysql
 
 from app.services.billing_service import BillingService
 
@@ -17,194 +18,127 @@ def make_service():
     return service
 
 
-def test_payment_amount_must_be_greater_than_zero():
+@pytest.mark.parametrize("amount,message", [
+    ("100.00", "Invoice not found."),
+    ("100.00", "Cannot make a payment for a cancelled invoice."),
+    ("400.00", "Payment exceeds outstanding balance of 300.00."),
+    ("100.00", "This invoice has already been fully paid."),
+])
+def test_payment_procedure_validation_is_translated_to_value_error(amount, message):
     service = make_service()
+    cursor = service.db.cursor.return_value.__enter__.return_value
+    cursor.execute.side_effect = pymysql.err.OperationalError(1644, message)
 
-    with pytest.raises(
-        ValueError,
-        match="Payment amount must be greater than zero."
-    ):
-        service.record_payment(
-            invoice_id=1,
-            amount=Decimal("0.00"),
-            payment_method="Cash",
-            transaction_reference="TEST-001"
-        )
+    with pytest.raises(ValueError) as exc:
+        service.record_payment(1, Decimal(amount), "Cash", "TEST-INVALID")
 
-
-def test_payment_rejects_missing_invoice():
-    service = make_service()
-
-    service.invoice_repository.get_by_id.return_value = None
-
-    with pytest.raises(
-        ValueError,
-        match="Invoice not found."
-    ):
-        service.record_payment(
-            invoice_id=999,
-            amount=Decimal("100.00"),
-            payment_method="Cash",
-            transaction_reference="TEST-002"
-        )
-
-
-def test_payment_rejects_cancelled_invoice():
-    service = make_service()
-
-    service.invoice_repository.get_by_id.return_value = {
-        "Invoice_ID": 1,
-        "Consultation_ID": 10,
-        "Invoice_Status": "Cancelled"
-    }
-
-    with pytest.raises(
-        ValueError,
-        match="Cannot make a payment for a cancelled invoice."
-    ):
-        service.record_payment(
-            invoice_id=1,
-            amount=Decimal("100.00"),
-            payment_method="Cash",
-            transaction_reference="TEST-003"
-        )
-
-
-def test_partial_payment_updates_invoice_to_partially_paid():
-    service = make_service()
-
-    service.invoice_repository.get_by_id.return_value = {
-        "Invoice_ID": 1,
-        "Consultation_ID": 10,
-        "Invoice_Status": "Issued"
-    }
-
-    service.calculate_total_bill = MagicMock(
-        return_value=Decimal("1000.00")
-    )
-
-    service.payment_repository.get_total_completed_for_invoice.return_value = (
-        Decimal("200.00")
-    )
-
-    # Mock the query that calculates insurance coverage.
-    cursor = MagicMock()
-    cursor.fetchone.return_value = {
-        "Insurance_Covered": Decimal("0.00")
-    }
-
-    service.db.cursor.return_value.__enter__.return_value = cursor
-
-    service.payment_repository.create.return_value = {
-        "Payment_ID": 1,
-        "Invoice_ID": 1,
-        "Amount": Decimal("300.00")
-    }
-
-    result = service.record_payment(
-        invoice_id=1,
-        amount=Decimal("300.00"),
-        payment_method="Cash",
-        transaction_reference="TEST-PARTIAL"
-    )
-
-    assert result["remaining_balance"] == Decimal("500.00")
-    assert result["invoice_status"] == "Partially_Paid"
-
-    service.invoice_repository.update_status.assert_called_once_with(
-        1,
-        "Partially_Paid"
-    )
-
-    service.db.commit.assert_called_once()
-
-
-def test_full_payment_updates_invoice_to_paid():
-    service = make_service()
-
-    service.invoice_repository.get_by_id.return_value = {
-        "Invoice_ID": 1,
-        "Consultation_ID": 10,
-        "Invoice_Status": "Partially_Paid"
-    }
-
-    service.calculate_total_bill = MagicMock(
-        return_value=Decimal("1000.00")
-    )
-
-    service.payment_repository.get_total_completed_for_invoice.return_value = (
-        Decimal("700.00")
-    )
-
-    cursor = MagicMock()
-    cursor.fetchone.return_value = {
-        "Insurance_Covered": Decimal("0.00")
-    }
-
-    service.db.cursor.return_value.__enter__.return_value = cursor
-
-    service.payment_repository.create.return_value = {
-        "Payment_ID": 2,
-        "Invoice_ID": 1,
-        "Amount": Decimal("300.00")
-    }
-
-    result = service.record_payment(
-        invoice_id=1,
-        amount=Decimal("300.00"),
-        payment_method="Cash",
-        transaction_reference="TEST-FULL"
-    )
-
-    assert result["remaining_balance"] == Decimal("0.00")
-    assert result["invoice_status"] == "Paid"
-
-    service.invoice_repository.update_status.assert_called_once_with(
-        1,
-        "Paid"
-    )
-
-    service.db.commit.assert_called_once()
-
-
-def test_payment_rejects_amount_greater_than_outstanding_balance():
-    service = make_service()
-
-    service.invoice_repository.get_by_id.return_value = {
-        "Invoice_ID": 1,
-        "Consultation_ID": 10,
-        "Invoice_Status": "Partially_Paid"
-    }
-
-    service.calculate_total_bill = MagicMock(
-        return_value=Decimal("1000.00")
-    )
-
-    service.payment_repository.get_total_completed_for_invoice.return_value = (
-        Decimal("700.00")
-    )
-
-    cursor = MagicMock()
-    cursor.fetchone.return_value = {
-        "Insurance_Covered": Decimal("0.00")
-    }
-
-    service.db.cursor.return_value.__enter__.return_value = cursor
-
-    with pytest.raises(
-        ValueError,
-        match="Payment exceeds outstanding balance of 300.00."
-    ):
-        service.record_payment(
-            invoice_id=1,
-            amount=Decimal("400.00"),
-            payment_method="Cash",
-            transaction_reference="TEST-OVERPAY"
-        )
-
+    assert str(exc.value) == message
+    service.db.rollback.assert_called_once()
+    service.db.commit.assert_not_called()
     service.payment_repository.create.assert_not_called()
     service.invoice_repository.update_status.assert_not_called()
 
+
+@pytest.mark.parametrize("amount", [
+    "800.004", "100.999", "0.001", "800.00000000000000000000000000000000001",
+    "0", "-1", "NaN", "Infinity", "100000000",
+])
+def test_payment_service_rejects_invalid_amount_before_transaction(amount):
+    service = make_service()
+    service.db.cursor.return_value.__enter__.return_value.execute.side_effect = AssertionError(
+        "Invalid amount reached the database"
+    )
+    with pytest.raises(ValueError, match="Payment amount"):
+        service.record_payment(1, Decimal(amount), "Cash", "TEST-INVALID-AMOUNT")
+    service.db.begin.assert_not_called()
+    service.db.cursor.assert_not_called()
+    service.db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize("amount", ["800", "800.5", "800.00", "800.0000", "8E2", "0.01"])
+def test_payment_service_forwards_exact_decimal_text(amount):
+    service = make_service()
+    cursor = service.db.cursor.return_value.__enter__.return_value
+    cursor.execute.side_effect = pymysql.err.OperationalError(1644, "test stop after CALL")
+    with pytest.raises(ValueError, match="test stop after CALL"):
+        service.record_payment(1, Decimal(amount), "Cash", "TEST-EXACT-AMOUNT")
+    forwarded = cursor.execute.call_args.args[1][1]
+    assert isinstance(forwarded, str)
+    assert Decimal(forwarded) == Decimal(amount)
+    assert "E" not in forwarded.upper()
+    service.db.rollback.assert_called_once()
+
+
+@pytest.mark.parametrize("remaining,paid_before,status", [
+    ("500.00", "200.00", "Partially_Paid"),
+    ("0.00", "700.00", "Paid"),
+])
+def test_payment_procedure_preserves_partial_and_full_payment_response(remaining, paid_before, status):
+    service = make_service()
+    cursor = service.db.cursor.return_value.__enter__.return_value
+    cursor.nextset.side_effect = [True, True, None]
+    cursor.fetchone.return_value = {
+        "payment_id": 2, "remaining_balance": Decimal(remaining), "invoice_status": status,
+    }
+    payment = {"Payment_ID": 2, "Invoice_ID": 1, "Amount": Decimal("300.00")}
+    service.payment_repository.get_by_id.return_value = payment
+    service.invoice_repository.get_summary.return_value = {
+        "Invoice_Total": Decimal("1000.00"), "Insurance_Covered": Decimal("0.00"),
+        "Patient_Paid": Decimal(paid_before) + Decimal("300.00"),
+    }
+
+    result = service.record_payment(1, Decimal("300.00"), "Cash", "TEST-PAYMENT")
+
+    assert result == {
+        "payment": payment, "total_bill": Decimal("1000.00"),
+        "insurance_covered": Decimal("0.00"), "total_paid_before_payment": Decimal(paid_before),
+        "remaining_balance": Decimal(remaining), "invoice_status": status,
+    }
+    call_sql, parameters = cursor.execute.call_args_list[0].args
+    assert "CALL sp_record_payment(" in call_sql
+    assert parameters == (1, "300.00", "Cash", "TEST-PAYMENT")
+    assert cursor.nextset.call_count == 3
+    assert "SELECT @payment_id" in cursor.execute.call_args_list[1].args[0]
+    service.payment_repository.get_by_id.assert_called_once_with(2)
+    service.invoice_repository.get_summary.assert_called_once_with(1)
+    service.payment_repository.create.assert_not_called()
+    service.invoice_repository.update_status.assert_not_called()
+    service.db.begin.assert_called_once()
+    service.db.commit.assert_called_once()
+    service.db.rollback.assert_not_called()
+
+
+@pytest.mark.parametrize("failure_stage", ["call", "outputs", "payment", "summary", "commit"])
+def test_payment_rolls_back_database_failures(failure_stage):
+    service = make_service()
+    cursor = service.db.cursor.return_value.__enter__.return_value
+    cursor.nextset.return_value = None
+    cursor.fetchone.return_value = {
+        "payment_id": 2, "remaining_balance": Decimal("500"), "invoice_status": "Partially_Paid",
+    }
+    service.payment_repository.get_by_id.return_value = {"Amount": Decimal("300")}
+    service.invoice_repository.get_summary.return_value = {
+        "Invoice_Total": Decimal("1000"), "Insurance_Covered": Decimal("0"),
+        "Patient_Paid": Decimal("500"),
+    }
+    error = pymysql.err.OperationalError(2013, "Lost connection")
+    if failure_stage == "call":
+        cursor.execute.side_effect = error
+    elif failure_stage == "outputs":
+        cursor.execute.side_effect = [None, error]
+    elif failure_stage == "payment":
+        service.payment_repository.get_by_id.side_effect = error
+    elif failure_stage == "summary":
+        service.invoice_repository.get_summary.side_effect = error
+    else:
+        service.db.commit.side_effect = error
+
+    with pytest.raises(pymysql.err.OperationalError) as exc:
+        service.record_payment(1, Decimal("300"), "Cash", "TEST-FAILURE")
+    assert exc.value is error
+    service.db.rollback.assert_called_once()
+    if failure_stage != "commit":
+        service.db.commit.assert_not_called()
 
 
 def test_claim_can_transition_from_submitted_to_approved():

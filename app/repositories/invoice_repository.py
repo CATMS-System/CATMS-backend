@@ -10,10 +10,11 @@ class InvoiceRepository:
         with self.db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT i.*, b.Branch_ID, b.Branch_Name
-                FROM Invoice i
-                JOIN Consultation c ON i.Consultation_ID = c.Consultation_ID
-                JOIN Appointment a ON c.Appointment_ID = a.Appointment_ID
+                SELECT i.Invoice_ID, i.Consultation_ID, i.Invoice_Date,
+                       i.Billed_Consultation_Fee, i.Invoice_Status,
+                       b.Branch_ID, b.Branch_Name
+                FROM vw_Invoice_Summary i
+                JOIN Appointment a ON i.Appointment_ID = a.Appointment_ID
                 JOIN Branch b ON a.Branch_ID = b.Branch_ID
                 ORDER BY i.Invoice_ID
                 """
@@ -21,6 +22,14 @@ class InvoiceRepository:
 
             return cursor.fetchall()
         
+    def get_summary(self, invoice_id: int):
+        with self.db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vw_Invoice_Summary WHERE Invoice_ID = %s",
+                (invoice_id,)
+            )
+            return cursor.fetchone()
+
     def get_by_id(self, invoice_id: int):
         with self.db.cursor() as cursor:
             cursor.execute(

@@ -1,10 +1,15 @@
 from decimal import Decimal
 
 import pymysql
+from pydantic import TypeAdapter, ValidationError
 
+from app.schemas.billing import PaymentAmount
 from app.repositories.invoice_repository import InvoiceRepository
 from app.repositories.payment_repository import PaymentRepository
 from app.repositories.insurance_claim_repository import InsuranceClaimRepository
+
+_payment_amount_adapter = TypeAdapter(PaymentAmount)
+
 
 class BillingService:
 
@@ -134,22 +139,16 @@ class BillingService:
                 (consultation_id,)
             )
             treatments = cursor.fetchall()
-        consultation_fee = Decimal(invoice["Billed_Consultation_Fee"])
-        treatment_total = Decimal(self.calculate_treatment_total(consultation_id))
-        total_bill = consultation_fee + treatment_total
-        insurance_covered = self.calculate_insurance_covered(invoice_id)
-        patient_paid = Decimal(
-            self.payment_repository.get_total_completed_for_invoice(invoice_id)
-        )
+        summary = self.invoice_repository.get_summary(invoice_id)
         return {
             "invoice": invoice,
             "treatments": treatments,
-            "consultation_fee": consultation_fee,
-            "total_treatment_charges": treatment_total,
-            "total_bill": total_bill,
-            "insurance_covered": insurance_covered,
-            "patient_paid": patient_paid,
-            "outstanding_balance": total_bill - insurance_covered - patient_paid,
+            "consultation_fee": summary["Billed_Consultation_Fee"],
+            "total_treatment_charges": summary["Total_Treatments_Fee"],
+            "total_bill": summary["Invoice_Total"],
+            "insurance_covered": summary["Insurance_Covered"],
+            "patient_paid": summary["Patient_Paid"],
+            "outstanding_balance": summary["Outstanding_Balance"],
         }
 
     def record_payment(
@@ -159,95 +158,63 @@ class BillingService:
         payment_method: str,
         transaction_reference: str
     ):
-        amount = Decimal(amount)
-
-        # Payment must be positive.
-        if amount <= 0:
+        try:
+            amount = _payment_amount_adapter.validate_python(amount)
+        except ValidationError as exc:
+            if exc.errors()[0]["type"] == "greater_than":
+                raise ValueError("Payment amount must be greater than zero.") from exc
             raise ValueError(
-                "Payment amount must be greater than zero."
-            )
-
-        # Find invoice.
-        invoice = self.invoice_repository.get_by_id(invoice_id)
-
-        if invoice is None:
-            raise ValueError("Invoice not found.")
-
-        if invoice["Invoice_Status"] == "Cancelled":
-            raise ValueError(
-                "Cannot make a payment for a cancelled invoice."
-            )
-
-        consultation_id = invoice["Consultation_ID"]
-
-        # Full bill = consultation fee + treatment charges.
-        total_bill = self.calculate_total_bill(consultation_id)
-
-        # Previous completed payments.
-        total_paid = Decimal(
-            self.payment_repository.get_total_completed_for_invoice(
-                invoice_id
-            )
-        )
-
-        insurance_covered = self.calculate_insurance_covered(invoice_id)
-
-        # Work out what is still owed.
-        outstanding = (
-            total_bill
-            - total_paid
-            - insurance_covered
-        )
-
-        if outstanding <= 0:
-            raise ValueError(
-                "This invoice has already been fully paid."
-            )
-
-        if amount > outstanding:
-            raise ValueError(
-                f"Payment exceeds outstanding balance of "
-                f"{outstanding:.2f}."
-            )
+                "Payment amount must be exactly representable within DECIMAL(10, 2)."
+            ) from exc
 
         try:
-            # Insert payment.
-            payment = self.payment_repository.create(
-                invoice_id=invoice_id,
-                amount=amount,
-                payment_method=payment_method,
-                transaction_reference=transaction_reference,
-                payment_status="Completed"
-            )
+            # One transaction owns the procedure's invoice lock and response reads.
+            self.db.begin()
+            with self.db.cursor() as cursor:
+                cursor.execute(
+                    """
+                    CALL sp_record_payment(
+                        %s, %s, %s, %s,
+                        @payment_id, @remaining_balance, @invoice_status
+                    )
+                    """,
+                    (invoice_id, format(amount, "f"), payment_method, transaction_reference)
+                )
+                # CALL adds a final empty result set; consume all sets before SELECT.
+                while cursor.nextset():
+                    pass
+                cursor.execute(
+                    """
+                    SELECT @payment_id AS payment_id,
+                           @remaining_balance AS remaining_balance,
+                           @invoice_status AS invoice_status
+                    """
+                )
+                result = cursor.fetchone()
 
-            remaining_balance = outstanding - amount
+            payment = self.payment_repository.get_by_id(result["payment_id"])
+            summary = self.invoice_repository.get_summary(invoice_id)
+            if payment is None or summary is None:
+                raise RuntimeError("Payment procedure returned incomplete results.")
 
-            # Determine invoice status.
-            if remaining_balance == 0:
-                new_status = "Paid"
-            else:
-                new_status = "Partially_Paid"
-
-            # Update invoice status.
-            self.invoice_repository.update_status(
-                invoice_id,
-                new_status
-            )
-
-            # Save both operations together.
-            self.db.commit()
-
-            return {
+            response = {
                 "payment": payment,
-                "total_bill": total_bill,
-                "insurance_covered": insurance_covered,
-                "total_paid_before_payment": total_paid,
-                "remaining_balance": remaining_balance,
-                "invoice_status": new_status
+                "total_bill": summary["Invoice_Total"],
+                "insurance_covered": summary["Insurance_Covered"],
+                "total_paid_before_payment": summary["Patient_Paid"] - payment["Amount"],
+                "remaining_balance": Decimal(result["remaining_balance"]),
+                "invoice_status": result["invoice_status"],
             }
+            self.db.commit()
+            return response
 
+        except pymysql.MySQLError as exc:
+            self.db.rollback()
+            # SIGNAL SQLSTATE '45000' uses MySQL error 1644 for business errors.
+            if exc.args and exc.args[0] == 1644:
+                raise ValueError(exc.args[1]) from exc
+            raise
         except Exception:
-            # Undo both operations if anything fails.
             self.db.rollback()
             raise
 
@@ -257,6 +224,9 @@ class BillingService:
         new_status: str,
         approved_amount=None
     ):
+        if new_status != "Approved" and approved_amount is not None:
+            raise ValueError("Approved amount is only allowed when approving a claim.")
+
         claim = self.insurance_claim_repository.get_by_id(claim_id)
 
         if claim is None:
@@ -264,21 +234,21 @@ class BillingService:
 
         current_status = claim["Claim_Status"]
 
-        # Allowed workflow:
-        # Submitted -> Approved -> Settled
+        # Claims may be reviewed or decided directly; rejected/settled are terminal.
         allowed_transitions = {
-            "Submitted": "Approved",
-            "Approved": "Settled"
+            "Submitted": {"Under_Review", "Approved", "Rejected"},
+            "Under_Review": {"Approved", "Rejected"},
+            "Approved": {"Settled"},
+            "Rejected": set(),
+            "Settled": set(),
         }
 
-        if current_status not in allowed_transitions:
+        if not allowed_transitions.get(current_status):
             raise ValueError(
                 f"Claim with status '{current_status}' cannot be changed."
             )
 
-        expected_status = allowed_transitions[current_status]
-
-        if new_status != expected_status:
+        if new_status not in allowed_transitions[current_status]:
             raise ValueError(
                 f"Invalid claim status transition: "
                 f"{current_status} -> {new_status}."
