@@ -1,3 +1,4 @@
-from app.api.v1.endpoints import auth, branches, staff, audit, doctors, appointments
+"""API v1 domain endpoint modules."""
+from app.api.v1.endpoints import auth, branches, staff, audit, doctors, appointments, billing, reports
 
-__all__ = ["auth", "branches", "staff", "audit", "doctors", "appointments"]
+__all__ = ["auth", "branches", "staff", "audit", "doctors", "appointments", "billing", "reports"]

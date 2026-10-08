@@ -22,6 +22,39 @@ Wait about 15 seconds for MySQL to initialize, then run the database migration a
 python sql/run_all.py
 ```
 
+The full runner recreates tables and loads seed data; use it only for a fresh or
+disposable database. It then installs the billing balance function, invoice summary
+view, and payment procedure in dependency order.
+
+To install or update only those billing SQL objects on an existing Docker database:
+
+```bash
+python sql/run_all.py --billing-only
+```
+
+This replaces the billing function/procedure and updates the view without changing
+tables or seed records. Deploy these objects before running the updated backend.
+`sp_record_payment` must be called inside a caller-owned transaction: begin, call,
+consume result sets, read its three OUT values, then commit; roll back on any failure.
+The procedure locks the invoice until commit and does not start or commit a transaction.
+Its amount input is plain decimal text (the service sends `format(amount, "f")`).
+It validates precision before converting to `DECIMAL(10, 2)`, so callers cannot
+silently round fractional cents. API payments must be positive, fit the existing
+database monetary range, and be exactly representable with two decimal places;
+trailing zeros are accepted. Claim status updates may supply a non-null
+`approved_amount` only when the target status is `Approved`.
+
+Run the backend suite with disposable Docker payment tests enabled (PowerShell):
+
+```powershell
+$env:CATMS_RUN_MYSQL_TESTS = "1"
+python -m pytest -q
+```
+
+These tests require the local seeded MySQL 8.0 database. They create their own
+appointment, consultation, invoice, treatment, claim, and payment records, then
+remove only those records and verify existing invoices/payments are unchanged.
+
 ### 3. Environment Setup
 Create and activate a virtual environment:
 
@@ -85,6 +118,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 - API Base URL: `http://localhost:8000`
 - Interactive Swagger Docs: `http://localhost:8000/docs`
 - Health Check: `http://localhost:8000/api/v1/health`
+
+Billing and report routers live in `app/api/v1/endpoints/` and are registered in
+`app/api/v1/router.py`. Billing uses `/api/v1/billing` for invoice listing/details,
+payments, claims, and claim status updates. Management reports use `/api/v1/reports`.
+The earlier `/api/v1/invoices` and `/api/v1/claims` routes are no longer registered;
+deploy the frontend billing API update together with this backend change.
 
 ### 8. Documentation
 Refer to `docs/` for additional technical documentation:

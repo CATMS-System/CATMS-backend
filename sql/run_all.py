@@ -3,6 +3,7 @@ Database Migration and Seed Runner for CATMS.
 Executes SQL scripts in order using PyMySQL connection settings from .env.
 """
 
+import argparse
 import os
 import re
 import sys
@@ -158,9 +159,17 @@ def split_sql_statements(sql: str) -> list[str]:
     return statements
 
 
-def run_all() -> None:
+def billing_sql_files() -> list[Path]:
+    return [
+        BASE_DIR / "database/functions/fn_calculate_patient_balance.sql",
+        BASE_DIR / "database/views/vw_Invoice_Summary.sql",
+        BASE_DIR / "database/procedures/sp_record_payment.sql",
+    ]
+
+
+def run_all(billing_only: bool = False) -> None:
     sql_dir = Path(__file__).resolve().parent
-    sql_files = sorted(sql_dir.glob("*.sql"))
+    sql_files = ([] if billing_only else sorted(sql_dir.glob("*.sql"))) + billing_sql_files()
 
     if not sql_files:
         print("No .sql files found in sql directory.")
@@ -211,4 +220,9 @@ def run_all() -> None:
 
 
 if __name__ == "__main__":
-    run_all()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--billing-only", action="store_true",
+        help="Install billing function, view and procedure without schema/seed scripts."
+    )
+    run_all(billing_only=parser.parse_args().billing_only)
