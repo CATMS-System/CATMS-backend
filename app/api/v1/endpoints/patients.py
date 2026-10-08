@@ -5,11 +5,19 @@
 # register, update, attach policy: Admin and Receptionist
 # search and read: Admin, Branch_Manager, Receptionist, Doctor
 import pymysql
-from fastapi import APIRouter, Depends, Query, Path
+from fastapi import APIRouter, Depends, Path, Query
 
 from app.api.deps import get_db
-from app.schemas.patient import (InsurancePolicyCreate, InsurancePolicyResponse, PaginatedResponse, PatientCreate, PatientDetailResponse, PatientSummaryResponse, PatientUpdate,)
-from app.services import patient_service, insurance_service
+from app.schemas.patient import (
+    InsurancePolicyCreate,
+    InsurancePolicyResponse,
+    PaginatedResponse,
+    PatientCreate,
+    PatientDetailResponse,
+    PatientSummaryResponse,
+    PatientUpdate,
+)
+from app.services import insurance_service, patient_service
 
 router = APIRouter()
 

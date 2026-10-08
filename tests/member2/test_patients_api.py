@@ -10,7 +10,13 @@ from app.db.connection import get_db_connection
 from app.main import app
 from app.schemas.patient import PatientCreate, PatientUpdate
 from app.services import patient_service
-from tests.member2.helpers import (patient_payload, policy_payload, random_nic, random_phone,)
+from tests.member2.helpers import (
+    patient_payload,
+    policy_payload,
+    random_nic,
+    random_phone,
+)
+
 
 def test_register_patient(client, make_patient):
     patient = make_patient()

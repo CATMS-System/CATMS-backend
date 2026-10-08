@@ -1,12 +1,20 @@
 
 """ Pydantic schemas for Member 2's domain: Patient, Emergency_Contact, Insurance_Provider, Insurance_Policy """
 
-from pydantic import BaseModel, ConfigDict, Field, EmailStr, field_validator, computed_field
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Generic, TypeVar
-import re
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    computed_field,
+    field_validator,
+)
 
 
 # Base Model
@@ -333,7 +341,7 @@ class PatientDetailResponse(BaseModel):
     emergency_contacts: list[EmergencyContactResponse] = []
     active_policies: list[InsurancePolicyResponse] = []
 
-# Pagination 
+# Pagination
 T = TypeVar("T")
 
 class PaginatedResponse(BaseModel, Generic[T]):

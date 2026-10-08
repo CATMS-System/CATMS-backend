@@ -1,11 +1,18 @@
 # patient logic, raw sql with pymysql
 import re
+
 import pymysql
 from fastapi import HTTPException
 
 from app.schemas.patient import PatientCreate, PatientUpdate
 from app.services import insurance_service
-from app.services.common import escape_like,lower_keys, lower_rows, transaction, write_audit
+from app.services.common import (
+    escape_like,
+    lower_keys,
+    lower_rows,
+    transaction,
+    write_audit,
+)
 
 PATIENT_COLS = "Patient_ID, First_Name, Last_Name, Date_Of_Birth, Gender, NIC, Contact_Number, Email, Street_Address, City, State_Province, Postal_Code, Registration_Date, Updated_At"
 EMERGENCY_COLS = "Emergency_Contact_ID, Patient_ID, First_Name, Last_Name, Relationship_To_Patient, Contact_Number, Street_Address, City, Postal_Code"

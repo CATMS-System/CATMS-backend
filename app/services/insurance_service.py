@@ -1,10 +1,12 @@
 # insurance providers and patient policies
 from datetime import date
+
 import pymysql
 from fastapi import HTTPException
 
 from app.schemas.patient import InsurancePolicyCreate, InsuranceProviderCreate
 from app.services.common import lower_keys, lower_rows, transaction
+
 PROVIDER_COLS = (
     "Provider_ID, Provider_Name, Contact_Number, Email, "
     "Street_Address, City, State_Province, Postal_Code"
@@ -34,7 +36,7 @@ def list_providers(conn: pymysql.Connection) -> list[dict]:
     with conn.cursor() as cursor:
         cursor.execute(f"SELECT {PROVIDER_COLS} FROM Insurance_Provider ORDER BY Provider_Name")
         return lower_rows(cursor.fetchall())
-    
+
 def create_provider(conn: pymysql.Connection, data: InsuranceProviderCreate) -> dict:
     with transaction(conn), conn.cursor() as cursor:
         # name and email must both be new

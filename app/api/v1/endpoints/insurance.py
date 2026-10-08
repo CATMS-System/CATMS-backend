@@ -4,7 +4,7 @@ import pymysql
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_db
-from app.schemas.patient import InsuranceProviderResponse, InsuranceProviderCreate
+from app.schemas.patient import InsuranceProviderCreate, InsuranceProviderResponse
 from app.services import insurance_service
 
 router = APIRouter()

@@ -7,6 +7,7 @@ from typing import Any
 import pymysql
 from fastapi import HTTPException
 
+
 # db columns look like Patient_ID but the schemas use patient_id
 def lower_keys(row: Any) -> dict | None:
     if not row:
