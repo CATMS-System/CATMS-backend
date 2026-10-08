@@ -244,3 +244,149 @@ def test_update_with_the_same_values_still_changes_updated_at(client, make_patie
         last_known_updated_at=patient["updated_at"],
     ).json()
     assert updated["updated_at"] != patient["updated_at"]
+
+def test_update_errors(client, make_patient):
+    patient = make_patient()
+    patient_id = patient["patient_id"]
+    time = patient["updated_at"]
+
+    assert put(client, 99999999, city="X", last_known_updated_at=time).status_code == 404
+    # nothing to change
+    assert put(client, patient_id, last_known_updated_at=time).status_code == 400
+    # timestamp missing
+    assert put(client, patient_id, city="X").status_code == 422
+    # locked fields
+    assert put(client, patient_id, nic="852140938V", last_known_updated_at=time).status_code == 422
+    assert put(client, patient_id, gender="Male", last_known_updated_at=time).status_code == 422
+    # required fields cannot be cleared
+    assert put(client, patient_id, first_name=None, last_known_updated_at=time).status_code == 422
+    assert put(client, patient_id, postal_code="1", last_known_updated_at=time).status_code == 422
+
+
+def test_update_can_clear_the_email(client, make_patient):
+    patient = make_patient()
+    updated = put(
+        client, patient["patient_id"], email=None, last_known_updated_at=patient["updated_at"]
+    ).json()
+    assert updated["email"] is None
+
+
+def test_update_emergency_contact(client, make_patient):
+    patient = make_patient()
+    contact_id = patient["emergency_contacts"][0]["emergency_contact_id"]
+    response = put(
+        client,
+        patient["patient_id"],
+        last_known_updated_at=patient["updated_at"],
+        emergency_contact={
+            "emergency_contact_id": contact_id,
+            "contact_number": "077 555 1212",
+            "city": None,
+        },
+    )
+    assert response.status_code == 200, response.text
+    contact = response.json()["emergency_contacts"][0]
+    assert contact["contact_number"] == "0775551212"
+    assert contact["first_name"] == "Emma"
+    # the patient's updated_at changes too
+    assert response.json()["updated_at"] != patient["updated_at"]
+
+
+def test_cannot_edit_another_patients_emergency_contact(client, make_patient):
+    first = make_patient()
+    second = make_patient()
+    other_contact_id = second["emergency_contacts"][0]["emergency_contact_id"]
+    response = put(
+        client,
+        first["patient_id"],
+        last_known_updated_at=first["updated_at"],
+        emergency_contact={"emergency_contact_id": other_contact_id, "first_name": "Hacked"},
+    )
+    assert response.status_code == 404
+    saved = client.get(f"/api/v1/patients/{second['patient_id']}").json()
+    assert saved["emergency_contacts"][0]["first_name"] == "Emma"
+
+
+def test_failed_update_changes_nothing(client, make_patient):
+    # a wrong contact id gives 404 and the patient fields must stay the same
+    patient = make_patient()
+    response = put(
+        client,
+        patient["patient_id"],
+        city="Changed",
+        last_known_updated_at=patient["updated_at"],
+        emergency_contact={"emergency_contact_id": 99999999, "first_name": "X"},
+    )
+    assert response.status_code == 404
+    saved = client.get(f"/api/v1/patients/{patient['patient_id']}").json()
+    assert saved["city"] == "Colombo"
+
+
+def test_audit_log_is_written_when_an_account_id_is_given():
+    # calls the service directly, because the routes do not pass account_id yet
+    conn = get_db_connection()
+    patient_id = None
+    account_id = None
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO User_Account (Username, Password_Hash, System_Role) "
+                "VALUES (%s, 'x', 'Receptionist')",
+                ("audit_" + uuid.uuid4().hex[:10],),
+            )
+            account_id = cursor.lastrowid
+        conn.commit()
+
+        patient = patient_service.register_patient(
+            conn, PatientCreate(**patient_payload()), account_id=account_id
+        )
+        patient_id = patient["patient_id"]
+        change = PatientUpdate(city="Matara", last_known_updated_at=patient["updated_at"])
+        patient_service.update_patient(conn, patient_id, change, account_id=account_id)
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT Action_Type, Old_Value, New_Value FROM Audit_Log "
+                "WHERE Table_Name = 'Patient' AND Record_ID = %s ORDER BY Audit_ID",
+                (str(patient_id),),
+            )
+            rows = cursor.fetchall()
+        assert [row["Action_Type"] for row in rows] == ["INSERT", "UPDATE"]
+        assert rows[0]["Old_Value"] is None
+        assert json.loads(rows[1]["Old_Value"])["city"] == "Colombo"
+        assert json.loads(rows[1]["New_Value"])["city"] == "Matara"
+    finally:
+        with conn.cursor() as cursor:
+            if patient_id:
+                cursor.execute(
+                    "DELETE FROM Audit_Log WHERE Table_Name = 'Patient' AND Record_ID = %s",
+                    (str(patient_id),),
+                )
+                cursor.execute("DELETE FROM Patient WHERE Patient_ID = %s", (patient_id,))
+            if account_id:
+                cursor.execute("DELETE FROM User_Account WHERE Account_ID = %s", (account_id,))
+        conn.commit()
+        conn.close()
+
+
+def test_two_edits_at_the_same_time_only_one_wins(make_patient):
+    # both clients loaded the same version, one must get 200 and the other 409
+    patient = make_patient()
+    status_codes = []
+    start_together = threading.Barrier(2)
+
+    def save_city(city):
+        with TestClient(app) as test_client:
+            start_together.wait()
+            response = test_client.put(
+                f"/api/v1/patients/{patient['patient_id']}",
+                json={"city": city, "last_known_updated_at": patient["updated_at"]},
+            )
+            status_codes.append(response.status_code)
+
+    threads = [threading.Thread(target=save_city, args=(city,)) for city in ("Galle", "Kandy")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(status_codes) == [200, 409], status_codes
