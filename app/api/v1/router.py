@@ -38,8 +38,6 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(branches.router, prefix="/branches", tags=["Branches"])
 api_router.include_router(staff.router, prefix="/staff", tags=["Staff"])
 api_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit Logs"])
-# api_router.include_router(patients.router, prefix="/patients", tags=["Patients"])
-
 api_router.include_router(patients.router, prefix="/patients", tags=["Patients"])
 api_router.include_router(insurance.router, prefix="/insurance", tags=["Insurance"])
 

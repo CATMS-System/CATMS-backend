@@ -40,6 +40,42 @@ def create_staff(
 ):
     """Register a new staff member (Option C: PyMySQL)."""
     with db.cursor() as cursor:
+        account_id = staff_in.Account_ID
+        if not account_id:
+            job_lower = staff_in.Job_Title.lower()
+            if any(term in job_lower for term in ("doc", "cardio", "derma", "physician", "surgeon", "consultant")):
+                role = "Doctor"
+            elif "manager" in job_lower:
+                role = "Branch_Manager"
+            elif "bill" in job_lower:
+                role = "Billing_Staff"
+            elif "admin" in job_lower:
+                role = "Admin"
+            else:
+                role = "Receptionist"
+
+            base_username = staff_in.Username or f"{staff_in.First_Name.lower()}.{staff_in.Last_Name.lower()}"
+            username = base_username
+            cursor.execute("SELECT Account_ID FROM User_Account WHERE Username = %s", (username,))
+            counter = 1
+            while cursor.fetchone():
+                username = f"{base_username}{counter}"
+                cursor.execute("SELECT Account_ID FROM User_Account WHERE Username = %s", (username,))
+                counter += 1
+
+            from app.core.security import get_password_hash
+            raw_pwd = staff_in.Password or "Welcome123!"
+            hashed_pwd = get_password_hash(raw_pwd)
+
+            cursor.execute(
+                """
+                INSERT INTO User_Account (Username, Password_Hash, System_Role, Account_Status)
+                VALUES (%s, %s, %s, 'Active')
+                """,
+                (username, hashed_pwd, role)
+            )
+            account_id = cursor.lastrowid
+
         cursor.execute(
             """
             INSERT INTO Staff 
@@ -48,7 +84,7 @@ def create_staff(
             (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
-                staff_in.Account_ID, staff_in.Branch_ID, staff_in.First_Name, staff_in.Last_Name, 
+                account_id, staff_in.Branch_ID, staff_in.First_Name, staff_in.Last_Name, 
                 staff_in.Job_Title, staff_in.Contact_Number, staff_in.Email, staff_in.Employment_Status.value
             )
         )

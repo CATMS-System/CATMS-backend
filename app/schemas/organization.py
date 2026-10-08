@@ -46,7 +46,9 @@ class StaffBase(BaseModel):
     Branch_ID: int
 
 class StaffCreate(StaffBase):
-    Account_ID: int
+    Account_ID: Optional[int] = None
+    Username: Optional[str] = None
+    Password: Optional[str] = None
 
 class StaffUpdate(BaseModel):
     First_Name: Optional[str] = None
