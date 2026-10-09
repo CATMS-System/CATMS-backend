@@ -22,9 +22,9 @@ Wait about 15 seconds for MySQL to initialize, then run the database migration a
 python sql/run_all.py
 ```
 
-The full runner recreates tables and loads seed data; use it only for a fresh or
-disposable database. It then installs the billing balance function, invoice summary
-view, and payment procedure in dependency order.
+The full runner recreates tables, loads seed data, and installs all database views,
+functions, stored procedures, and triggers (including appointment overlap prevention triggers).
+Use it for a fresh or disposable database. To skip routines and triggers, use `--no-routines`.
 
 To install or update only those billing SQL objects on an existing Docker database:
 

@@ -15,12 +15,16 @@ FOR EACH ROW
 BEGIN
     DECLARE overlap_count INT DEFAULT 0;
     DECLARE new_end_time TIME;
+    DECLARE locked_doc_id INT;
 
     -- Compute end time for candidate appointment
     SET new_end_time = ADDTIME(NEW.Start_Time, SEC_TO_TIME(NEW.Duration_Minutes * 60));
 
     -- Only enforce check for active appointment states
     IF NEW.Status IN ('Scheduled', 'Confirmed') THEN
+        -- Serialize appointments for target doctor to prevent concurrency race conditions
+        SELECT Doctor_ID INTO locked_doc_id FROM Doctor WHERE Doctor_ID = NEW.Doctor_ID FOR UPDATE;
+
         SELECT COUNT(*)
         INTO overlap_count
         FROM Appointment
@@ -52,12 +56,16 @@ FOR EACH ROW
 BEGIN
     DECLARE overlap_count INT DEFAULT 0;
     DECLARE new_end_time TIME;
+    DECLARE locked_doc_id INT;
 
     -- Compute updated end time
     SET new_end_time = ADDTIME(NEW.Start_Time, SEC_TO_TIME(NEW.Duration_Minutes * 60));
 
     -- Only enforce check for active appointment states
     IF NEW.Status IN ('Scheduled', 'Confirmed') THEN
+        -- Serialize appointments for target doctor to prevent concurrency race conditions
+        SELECT Doctor_ID INTO locked_doc_id FROM Doctor WHERE Doctor_ID = NEW.Doctor_ID FOR UPDATE;
+
         SELECT COUNT(*)
         INTO overlap_count
         FROM Appointment

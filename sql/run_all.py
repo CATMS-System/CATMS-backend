@@ -183,16 +183,17 @@ def billing_sql_files() -> list[Path]:
     ]
 
 
-def run_all(billing_only: bool = False, all_routines: bool = False) -> None:
+def run_all(billing_only: bool = False, no_routines: bool = False, all_routines: bool = False) -> None:
     sql_dir = Path(__file__).resolve().parent
     if billing_only:
         sql_files = billing_sql_files()
-    elif all_routines:
+    elif no_routines:
+        sql_files = sorted(sql_dir.glob("*.sql"))
+    else:
+        # Default behavior: load schema and seed scripts, followed by all database routines and triggers
         sql_files = sorted(sql_dir.glob("*.sql")) + [
             f for f in all_database_routine_files() if f.is_file()
         ]
-    else:
-        sql_files = sorted(sql_dir.glob("*.sql")) + billing_sql_files()
 
     if not sql_files:
         print("No .sql files found in sql directory.")
@@ -249,9 +250,13 @@ if __name__ == "__main__":
         help="Install billing function, view and procedure without schema/seed scripts."
     )
     parser.add_argument(
+        "--no-routines", action="store_true",
+        help="Install schema and seed scripts only, skipping stored routines and triggers."
+    )
+    parser.add_argument(
         "--all-routines", action="store_true",
-        help="Install all database functions, views, procedures, and triggers."
+        help="Legacy flag: install all database routines and triggers (now default behavior)."
     )
     args = parser.parse_args()
-    run_all(billing_only=args.billing_only, all_routines=args.all_routines)
+    run_all(billing_only=args.billing_only, no_routines=args.no_routines, all_routines=args.all_routines)
 
