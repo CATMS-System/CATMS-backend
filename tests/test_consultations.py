@@ -4,6 +4,7 @@ Clinical Consultation Module Integration Tests.
 NOTE: The MySQL database must be seeded before running these tests.
 Run `python sql/run_all.py` first to ensure all schema tables, stored procedures,
 and seed records exist.
+All tests create isolated appointment fixtures to avoid state pollution or seed drift.
 """
 
 import os
@@ -55,26 +56,76 @@ def auth_override():
         app.dependency_overrides.pop(get_current_user, None)
 
 
+def create_isolated_appointment(
+    patient_id: int = 1,
+    doctor_id: int = 1,
+    branch_id: int = 1,
+    status: str = "Confirmed",
+    appt_date: str = "2099-01-01",
+    start_time: str = "10:00:00",
+    reason: str = "Cardiology evaluation and checkup",
+    cancellation_reason: str = None
+) -> int:
+    """Inserts a dedicated appointment for isolated test execution."""
+    if status == "Cancelled" and not cancellation_reason:
+        cancellation_reason = "Cancelled for testing"
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO Appointment 
+                (Patient_ID, Doctor_ID, Branch_ID, Appointment_Date, Start_Time, Duration_Minutes, Appointment_Type, Status, Cancellation_Reason, Reason_For_Visit)
+                VALUES (%s, %s, %s, %s, %s, 20, 'Standard', %s, %s, %s)
+                """,
+                (patient_id, doctor_id, branch_id, appt_date, start_time, status, cancellation_reason, reason)
+            )
+            appt_id = cur.lastrowid
+            conn.commit()
+            return appt_id
+    finally:
+        conn.close()
+
+
+def cleanup_isolated_appointment(appt_id: int):
+    """Cleans up an isolated appointment and all related consultation and invoice rows."""
+    if not appt_id:
+        return
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM Invoice WHERE Consultation_ID IN (
+                    SELECT Consultation_ID FROM Consultation WHERE Appointment_ID = %s
+                )
+            """, (appt_id,))
+            cur.execute("""
+                DELETE FROM Prescribed_Treatment WHERE Consultation_ID IN (
+                    SELECT Consultation_ID FROM Consultation WHERE Appointment_ID = %s
+                )
+            """, (appt_id,))
+            cur.execute("DELETE FROM Consultation WHERE Appointment_ID = %s", (appt_id,))
+            cur.execute("DELETE FROM Appointment WHERE Appointment_ID = %s", (appt_id,))
+            conn.commit()
+    finally:
+        conn.close()
+
+
 def test_successful_consultation_creation():
     """
     Verifies that a successful consultation creates Consultation, Prescribed_Treatment items,
     and Invoice, and marks the Appointment as 'Completed'.
-    Uses appointment 4, restoring status and deleting created rows in a finally block.
+    Uses a dedicated isolated appointment and cleans up completely in a finally block.
     """
-    target_appt = 4
+    target_appt = create_isolated_appointment(
+        patient_id=1, doctor_id=1, branch_id=1,
+        status="Confirmed", appt_date="2099-01-01", start_time="09:00:00"
+    )
     conn = get_db_connection()
     c_id = None
     i_id = None
-    orig_status = None
 
     try:
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
-            appt_row = cur.fetchone()
-            assert appt_row is not None, f"Appointment {target_appt} not found"
-            orig_status = appt_row["Status"]
-            assert orig_status in ("Scheduled", "Confirmed")
-
         payload = {
             "appointment_id": target_appt,
             "diagnosis": "Cardiovascular Evaluation and Follow-up",
@@ -137,18 +188,8 @@ def test_successful_consultation_creation():
 
         print("Test Passed: Successful consultation created consultation, items, and invoice, and marked appointment 'Completed'.")
     finally:
-        try:
-            with conn.cursor() as cur:
-                if i_id:
-                    cur.execute("DELETE FROM Invoice WHERE Invoice_ID = %s", (i_id,))
-                if c_id:
-                    cur.execute("DELETE FROM Prescribed_Treatment WHERE Consultation_ID = %s", (c_id,))
-                    cur.execute("DELETE FROM Consultation WHERE Consultation_ID = %s", (c_id,))
-                if orig_status:
-                    cur.execute("UPDATE Appointment SET Status = %s WHERE Appointment_ID = %s", (orig_status, target_appt))
-                conn.commit()
-        finally:
-            conn.close()
+        conn.close()
+        cleanup_isolated_appointment(target_appt)
 
 
 def test_invalid_treatment_id_rollback():
@@ -156,20 +197,15 @@ def test_invalid_treatment_id_rollback():
     Verifies that an invalid treatment_id raises 422 and rolls everything back.
     Ensures nothing is saved in Consultation, Prescribed_Treatment, or Invoice,
     and appointment status remains unchanged.
-    Uses appointment 4, restoring status and cleaning up in a finally block.
+    Uses an isolated appointment and cleans up completely in a finally block.
     """
-    target_appt = 4
+    target_appt = create_isolated_appointment(
+        patient_id=1, doctor_id=1, branch_id=1,
+        status="Confirmed", appt_date="2099-01-02", start_time="09:00:00"
+    )
     conn = get_db_connection()
-    orig_status = None
 
     try:
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
-            appt_row = cur.fetchone()
-            assert appt_row is not None
-            orig_status = appt_row["Status"]
-            assert orig_status in ("Scheduled", "Confirmed")
-
         payload = {
             "appointment_id": target_appt,
             "diagnosis": "Rollback Test Diagnosis",
@@ -188,7 +224,7 @@ def test_invalid_treatment_id_rollback():
         with conn.cursor(pymysql.cursors.DictCursor) as cur:
             # 1. Appointment status unchanged
             cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
-            assert cur.fetchone()["Status"] == orig_status
+            assert cur.fetchone()["Status"] == "Confirmed"
 
             # 2. No Consultation created
             cur.execute("SELECT * FROM Consultation WHERE Appointment_ID = %s", (target_appt,))
@@ -212,45 +248,23 @@ def test_invalid_treatment_id_rollback():
 
         print("Test Passed: Invalid treatment_id raised 422 and rolled everything back.")
     finally:
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    DELETE FROM Invoice WHERE Consultation_ID IN (
-                        SELECT Consultation_ID FROM Consultation WHERE Appointment_ID = %s
-                    )
-                """, (target_appt,))
-                cur.execute("""
-                    DELETE FROM Prescribed_Treatment WHERE Consultation_ID IN (
-                        SELECT Consultation_ID FROM Consultation WHERE Appointment_ID = %s
-                    )
-                """, (target_appt,))
-                cur.execute("DELETE FROM Consultation WHERE Appointment_ID = %s", (target_appt,))
-                if orig_status:
-                    cur.execute("UPDATE Appointment SET Status = %s WHERE Appointment_ID = %s", (orig_status, target_appt))
-                conn.commit()
-        finally:
-            conn.close()
+        conn.close()
+        cleanup_isolated_appointment(target_appt)
 
 
 def test_discontinued_treatment_rejected():
     """
     Verifies that attempting to prescribe a discontinued treatment raises 422 and rolls back.
-    Uses appointment 5, inserting a temporary discontinued treatment, and restoring status
-    and deleting created rows in a finally block.
+    Uses an isolated appointment and temporary discontinued treatment, cleaning up both in a finally block.
     """
-    target_appt = 5
+    target_appt = create_isolated_appointment(
+        patient_id=4, doctor_id=1, branch_id=1,
+        status="Scheduled", appt_date="2099-01-03", start_time="09:00:00"
+    )
     conn = get_db_connection()
-    orig_status = None
     temp_disc_id = None
 
     try:
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
-            appt_row = cur.fetchone()
-            assert appt_row is not None
-            orig_status = appt_row["Status"]
-            assert orig_status in ("Scheduled", "Confirmed")
-
         # Insert a temporary discontinued treatment
         with conn.cursor() as cur:
             cur.execute(
@@ -279,7 +293,7 @@ def test_discontinued_treatment_rejected():
         conn.commit()
         with conn.cursor(pymysql.cursors.DictCursor) as cur:
             cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
-            assert cur.fetchone()["Status"] == orig_status
+            assert cur.fetchone()["Status"] == "Scheduled"
 
             cur.execute("SELECT * FROM Consultation WHERE Appointment_ID = %s", (target_appt,))
             assert len(cur.fetchall()) == 0
@@ -290,44 +304,23 @@ def test_discontinued_treatment_rejected():
             with conn.cursor() as cur:
                 if temp_disc_id:
                     cur.execute("DELETE FROM Treatment_Catalogue WHERE Treatment_ID = %s", (temp_disc_id,))
-                cur.execute("""
-                    DELETE FROM Invoice WHERE Consultation_ID IN (
-                        SELECT Consultation_ID FROM Consultation WHERE Appointment_ID = %s
-                    )
-                """, (target_appt,))
-                cur.execute("""
-                    DELETE FROM Prescribed_Treatment WHERE Consultation_ID IN (
-                        SELECT Consultation_ID FROM Consultation WHERE Appointment_ID = %s
-                    )
-                """, (target_appt,))
-                cur.execute("DELETE FROM Consultation WHERE Appointment_ID = %s", (target_appt,))
-                if orig_status:
-                    cur.execute("UPDATE Appointment SET Status = %s WHERE Appointment_ID = %s", (orig_status, target_appt))
                 conn.commit()
         finally:
             conn.close()
+            cleanup_isolated_appointment(target_appt)
 
 
 def test_completed_appointment_returns_409():
     """
     Verifies that attempting to create a consultation for an already Completed appointment returns 409.
-    Uses appointment 4, restoring status in a finally block.
+    Uses an isolated appointment created directly in Completed status.
     """
-    target_appt = 4
-    conn = get_db_connection()
-    orig_status = None
+    target_appt = create_isolated_appointment(
+        patient_id=1, doctor_id=1, branch_id=1,
+        status="Completed", appt_date="2099-01-04", start_time="09:00:00"
+    )
 
     try:
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
-            appt_row = cur.fetchone()
-            assert appt_row is not None
-            orig_status = appt_row["Status"]
-
-            # Temporarily set to Completed
-            cur.execute("UPDATE Appointment SET Status = 'Completed' WHERE Appointment_ID = %s", (target_appt,))
-            conn.commit()
-
         payload = {
             "appointment_id": target_appt,
             "diagnosis": "Consultation on Completed Appointment",
@@ -341,38 +334,20 @@ def test_completed_appointment_returns_409():
 
         print("Test Passed: Completed appointment returned 409 Conflict.")
     finally:
-        try:
-            with conn.cursor() as cur:
-                if orig_status:
-                    cur.execute("UPDATE Appointment SET Status = %s WHERE Appointment_ID = %s", (orig_status, target_appt))
-                conn.commit()
-        finally:
-            conn.close()
+        cleanup_isolated_appointment(target_appt)
 
 
 def test_cancelled_appointment_returns_409():
     """
     Verifies that attempting to create a consultation for a Cancelled appointment returns 409.
-    Uses appointment 4, restoring status in a finally block.
+    Uses an isolated appointment created directly in Cancelled status.
     """
-    target_appt = 4
-    conn = get_db_connection()
-    orig_status = None
+    target_appt = create_isolated_appointment(
+        patient_id=1, doctor_id=1, branch_id=1,
+        status="Cancelled", appt_date="2099-01-05", start_time="09:00:00"
+    )
 
     try:
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
-            appt_row = cur.fetchone()
-            assert appt_row is not None
-            orig_status = appt_row["Status"]
-
-            # Temporarily set to Cancelled with reason
-            cur.execute(
-                "UPDATE Appointment SET Status = 'Cancelled', Cancellation_Reason = 'Patient cancelled test' WHERE Appointment_ID = %s",
-                (target_appt,)
-            )
-            conn.commit()
-
         payload = {
             "appointment_id": target_appt,
             "diagnosis": "Consultation on Cancelled Appointment",
@@ -386,41 +361,27 @@ def test_cancelled_appointment_returns_409():
 
         print("Test Passed: Cancelled appointment returned 409 Conflict.")
     finally:
-        try:
-            with conn.cursor() as cur:
-                if orig_status:
-                    cur.execute(
-                        "UPDATE Appointment SET Status = %s, Cancellation_Reason = NULL WHERE Appointment_ID = %s",
-                        (orig_status, target_appt)
-                    )
-                conn.commit()
-        finally:
-            conn.close()
+        cleanup_isolated_appointment(target_appt)
 
 
 def test_duplicate_consultation_returns_409():
     """
     Verifies that attempting to create a second consultation for the same appointment returns 409.
-    Uses appointment 4, restoring status and deleting created rows in a finally block.
+    Uses an isolated appointment and cleans up completely in a finally block.
     """
-    target_appt = 4
+    target_appt = create_isolated_appointment(
+        patient_id=1, doctor_id=1, branch_id=1,
+        status="Confirmed", appt_date="2099-01-06", start_time="09:00:00"
+    )
     conn = get_db_connection()
-    orig_status = None
-    c_id = None
 
     try:
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            cur.execute("SELECT Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
-            appt_row = cur.fetchone()
-            assert appt_row is not None
-            orig_status = appt_row["Status"]
-
+        with conn.cursor() as cur:
             # Insert an initial consultation while appointment remains active
             cur.execute(
                 "INSERT INTO Consultation (Appointment_ID, Consultation_Date, Diagnosis) VALUES (%s, CURRENT_DATE, 'Initial Clinical Visit')",
                 (target_appt,)
             )
-            c_id = cur.lastrowid
             conn.commit()
 
         payload = {
@@ -436,36 +397,25 @@ def test_duplicate_consultation_returns_409():
 
         print("Test Passed: Duplicate consultation returned 409 Conflict.")
     finally:
-        try:
-            with conn.cursor() as cur:
-                if c_id:
-                    cur.execute("DELETE FROM Consultation WHERE Consultation_ID = %s", (c_id,))
-                if orig_status:
-                    cur.execute("UPDATE Appointment SET Status = %s WHERE Appointment_ID = %s", (orig_status, target_appt))
-                conn.commit()
-        finally:
-            conn.close()
+        conn.close()
+        cleanup_isolated_appointment(target_appt)
 
 
 def test_patient_history_returns_newest_first():
     """
     Verifies that patient consultation history returns records in strictly newest-first order.
-    Uses appointment 4 (Patient 1) to create a newer consultation record alongside seeded consultation 1,
-    confirms descending date ordering, and cleans up in a finally block.
+    Uses an isolated appointment for Patient 1 to create a newer consultation record alongside seeded consultation 1,
+    confirms descending date ordering, and cleans up completely in a finally block.
     """
-    target_appt = 4
+    target_appt = create_isolated_appointment(
+        patient_id=1, doctor_id=1, branch_id=1,
+        status="Confirmed", appt_date="2099-01-07", start_time="09:00:00"
+    )
     conn = get_db_connection()
-    orig_status = None
     c_id = None
 
     try:
-        with conn.cursor(pymysql.cursors.DictCursor) as cur:
-            cur.execute("SELECT Patient_ID, Status FROM Appointment WHERE Appointment_ID = %s", (target_appt,))
-            appt_row = cur.fetchone()
-            assert appt_row is not None
-            assert appt_row["Patient_ID"] == 1
-            orig_status = appt_row["Status"]
-
+        with conn.cursor() as cur:
             # Insert a new consultation for Patient 1 with today's date
             cur.execute(
                 """
@@ -493,15 +443,8 @@ def test_patient_history_returns_newest_first():
 
         print(f"Test Passed: Patient history returned {len(body)} records ordered newest first.")
     finally:
-        try:
-            with conn.cursor() as cur:
-                if c_id:
-                    cur.execute("DELETE FROM Consultation WHERE Consultation_ID = %s", (c_id,))
-                if orig_status:
-                    cur.execute("UPDATE Appointment SET Status = %s WHERE Appointment_ID = %s", (orig_status, target_appt))
-                conn.commit()
-        finally:
-            conn.close()
+        conn.close()
+        cleanup_isolated_appointment(target_appt)
 
 
 def test_unknown_consultation_id_returns_404():
