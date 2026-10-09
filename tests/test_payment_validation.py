@@ -26,9 +26,19 @@ def payment_payload(method):
 
 @pytest.fixture
 def payment_api():
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    mock_user = UserAccount(
+        Account_ID=1,
+        Username="billing_tester",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Billing_Staff,
+        Account_Status=AccountStatusEnum.Active,
+    )
     db = MagicMock()
     previous_overrides = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: mock_user
     try:
         with patch("app.api.v1.endpoints.billing.BillingService") as service_class:
             with TestClient(app) as client:

@@ -33,6 +33,22 @@ def get_current_user(db: pymysql.Connection = Depends(get_db), token: str = Depe
     user = UserAccount(**user_row)  # type: ignore
     if user.Account_Status != "Active":
         raise HTTPException(status_code=400, detail="Inactive user")
+
+    with db.cursor() as cursor:
+        cursor.execute(
+            "SET @app_account_id = %s, @current_account_id = %s",
+            (user.Account_ID, user.Account_ID)
+        )
+        cursor.execute("SELECT Branch_ID FROM Staff WHERE Account_ID = %s", (user.Account_ID,))
+        st_row = cursor.fetchone()
+        if st_row and st_row.get("Branch_ID"):
+            cursor.execute(
+                "SET @app_branch_id = %s, @current_branch_id = %s",
+                (st_row["Branch_ID"], st_row["Branch_ID"])
+            )
+        else:
+            cursor.execute("SET @app_branch_id = NULL, @current_branch_id = NULL")
+
     return user
 
 def require_roles(allowed_roles: list[SystemRoleEnum]):

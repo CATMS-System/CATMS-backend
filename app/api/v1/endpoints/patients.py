@@ -5,8 +5,8 @@
 import pymysql
 from fastapi import APIRouter, Depends, Path, Query
 
-from app.api.deps import get_db, require_roles
-from app.schemas.user import SystemRoleEnum
+from app.api.deps import get_db, require_roles, get_current_user
+from app.schemas.user import SystemRoleEnum, UserAccount
 from app.schemas.patient import (
     InsurancePolicyCreate,
     InsurancePolicyResponse,
@@ -28,8 +28,12 @@ router = APIRouter()
     status_code=201,
     dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Receptionist]))],
 )
-def register_patient(data: PatientCreate, conn: pymysql.Connection = Depends(get_db)):
-    return patient_service.register_patient(conn, data)
+def register_patient(
+    data: PatientCreate,
+    conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    return patient_service.register_patient(conn, data, account_id=current_user.Account_ID)
 
 # search by name, nic, phone or patient id, empty search lists everyone
 @router.get(
@@ -63,8 +67,9 @@ def update_patient(
     data: PatientUpdate,
     patient_id: int = Path(..., ge=1),
     conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
 ):
-    return patient_service.update_patient(conn, patient_id, data)
+    return patient_service.update_patient(conn, patient_id, data, account_id=current_user.Account_ID)
 
 @router.get(
     "/{patient_id}/policies",

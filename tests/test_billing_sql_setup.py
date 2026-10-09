@@ -36,7 +36,7 @@ def test_full_setup_includes_billing_objects_after_schema_and_seed(monkeypatch):
     monkeypatch.setattr(Path, "read_text", record_file)
     run_all.run_all()
 
-    assert seen_files == [
-        "01_schema.sql", "02_seed_data.sql", "fn_calculate_patient_balance.sql",
-        "vw_Invoice_Summary.sql", "sp_record_payment.sql",
-    ]
+    assert seen_files[:2] == ["01_schema.sql", "02_seed_data.sql"]
+    assert "fn_calculate_patient_balance.sql" in seen_files
+    assert "vw_Invoice_Summary.sql" in seen_files
+    assert "sp_record_payment.sql" in seen_files

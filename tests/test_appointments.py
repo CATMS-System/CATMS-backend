@@ -19,7 +19,25 @@ from app.services.appointment_service import (
 
 @pytest.fixture(scope="module")
 def client():
-    return TestClient(app)
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    mock_user = UserAccount(
+        Account_ID=1,
+        Username="receptionist_tester",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Receptionist,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        if previous is not None:
+            app.dependency_overrides[get_current_user] = previous
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
 
 
 @pytest.fixture(scope="function")

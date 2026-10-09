@@ -25,7 +25,8 @@ def get_db_connection() -> pymysql.Connection:
         cursorclass=pymysql.cursors.DictCursor,
         ssl=ssl_config,
         autocommit=False,
-        connect_timeout=10
+        connect_timeout=10,
+        init_command="SET time_zone = '+05:30'"
     )
 
 
