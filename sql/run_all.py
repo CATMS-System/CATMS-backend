@@ -159,6 +159,22 @@ def split_sql_statements(sql: str) -> list[str]:
     return statements
 
 
+def all_database_routine_files() -> list[Path]:
+    return [
+        BASE_DIR / "database/functions/fn_calculate_patient_balance.sql",
+        BASE_DIR / "database/views/vw_Invoice_Summary.sql",
+        BASE_DIR / "database/views/vw_audit_log_readable.sql",
+        BASE_DIR / "database/views/vw_staff_directory.sql",
+        BASE_DIR / "database/procedures/sp_book_appointment.sql",
+        BASE_DIR / "database/procedures/sp_complete_consultation_and_generate_invoice.sql",
+        BASE_DIR / "database/procedures/sp_force_password_reset.sql",
+        BASE_DIR / "database/procedures/sp_record_payment.sql",
+        BASE_DIR / "database/procedures/sp_transfer_branch_manager.sql",
+        BASE_DIR / "database/triggers/trg_after_staff_update.sql",
+        BASE_DIR / "database/triggers/trg_check_appointment_overlap.sql",
+    ]
+
+
 def billing_sql_files() -> list[Path]:
     return [
         BASE_DIR / "database/functions/fn_calculate_patient_balance.sql",
@@ -167,9 +183,16 @@ def billing_sql_files() -> list[Path]:
     ]
 
 
-def run_all(billing_only: bool = False) -> None:
+def run_all(billing_only: bool = False, all_routines: bool = False) -> None:
     sql_dir = Path(__file__).resolve().parent
-    sql_files = ([] if billing_only else sorted(sql_dir.glob("*.sql"))) + billing_sql_files()
+    if billing_only:
+        sql_files = billing_sql_files()
+    elif all_routines:
+        sql_files = sorted(sql_dir.glob("*.sql")) + [
+            f for f in all_database_routine_files() if f.is_file()
+        ]
+    else:
+        sql_files = sorted(sql_dir.glob("*.sql")) + billing_sql_files()
 
     if not sql_files:
         print("No .sql files found in sql directory.")
@@ -225,4 +248,10 @@ if __name__ == "__main__":
         "--billing-only", action="store_true",
         help="Install billing function, view and procedure without schema/seed scripts."
     )
-    run_all(billing_only=parser.parse_args().billing_only)
+    parser.add_argument(
+        "--all-routines", action="store_true",
+        help="Install all database functions, views, procedures, and triggers."
+    )
+    args = parser.parse_args()
+    run_all(billing_only=args.billing_only, all_routines=args.all_routines)
+

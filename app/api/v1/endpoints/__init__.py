@@ -4,6 +4,8 @@ from app.api.v1.endpoints import (
     branches,
     staff,
     audit,
+    patients,
+    insurance,
     doctors,
     appointments,
     billing,
@@ -17,6 +19,8 @@ __all__ = [
     "branches",
     "staff",
     "audit",
+    "patients",
+    "insurance",
     "doctors",
     "appointments",
     "billing",
@@ -24,3 +28,4 @@ __all__ = [
     "treatments",
     "consultations",
 ]
+

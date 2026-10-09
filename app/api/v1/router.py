@@ -1,7 +1,20 @@
 from fastapi import APIRouter, Depends
 import pymysql
 from app.api.deps import get_db
-from app.api.v1.endpoints import auth, branches, staff, audit, insurance, patients, billing, reports
+from app.api.v1.endpoints import (
+    appointments,
+    audit,
+    auth,
+    billing,
+    branches,
+    consultations,
+    doctors,
+    insurance,
+    patients,
+    reports,
+    staff,
+    treatments,
+)
 
 api_router = APIRouter()
 
@@ -27,7 +40,7 @@ def health_check(conn: pymysql.Connection = Depends(get_db)):
     }
 
 # Domain routers
-from app.api.v1.endpoints import doctors, appointments, treatments, consultations
+
 
 api_router.include_router(doctors.router, prefix="/doctors", tags=["Doctors"])
 api_router.include_router(doctors.specialties_router, prefix="/specialties", tags=["Specialties"])
