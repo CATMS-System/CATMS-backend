@@ -24,6 +24,45 @@ class SpecialtyResponse(SpecialtyBase):
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
+from enum import Enum
+
+
+class DayOfWeekEnum(str, Enum):
+    Monday = "Monday"
+    Tuesday = "Tuesday"
+    Wednesday = "Wednesday"
+    Thursday = "Thursday"
+    Friday = "Friday"
+    Saturday = "Saturday"
+    Sunday = "Sunday"
+
+
+class AvailabilityStatusEnum(str, Enum):
+    Active = "Active"
+    Suspended = "Suspended"
+    On_Call = "On_Call"
+
+
+class DoctorScheduleCreate(BaseModel):
+    branch_id: int = Field(..., alias="Branch_ID", gt=0, description="Clinic branch identifier")
+    day_of_week: DayOfWeekEnum = Field(..., alias="Day_Of_Week", description="Day of the week (Monday-Sunday)")
+    start_time: str = Field(..., alias="Start_Time", description="Shift start time in HH:MM or HH:MM:SS format")
+    end_time: str = Field(..., alias="End_Time", description="Shift end time in HH:MM or HH:MM:SS format")
+    availability_status: AvailabilityStatusEnum = Field(default=AvailabilityStatusEnum.Active, alias="Availability_Status", description="Shift status")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DoctorScheduleUpdate(BaseModel):
+    branch_id: Optional[int] = Field(default=None, alias="Branch_ID", gt=0)
+    day_of_week: Optional[DayOfWeekEnum] = Field(default=None, alias="Day_Of_Week")
+    start_time: Optional[str] = Field(default=None, alias="Start_Time")
+    end_time: Optional[str] = Field(default=None, alias="End_Time")
+    availability_status: Optional[AvailabilityStatusEnum] = Field(default=None, alias="Availability_Status")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class DoctorScheduleResponse(BaseModel):
     schedule_id: int = Field(..., alias="Schedule_ID", description="Unique schedule identifier")
     doctor_id: int = Field(..., alias="Doctor_ID", description="Doctor identifier")

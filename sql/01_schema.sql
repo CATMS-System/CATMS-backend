@@ -444,6 +444,7 @@ CREATE TABLE Appointment (
     Status ENUM(
         'Scheduled',
         'Confirmed',
+        'In_Progress',
         'Completed',
         'Cancelled',
         'No_Show'

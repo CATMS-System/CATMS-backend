@@ -166,3 +166,45 @@ def test_trigger_rejects_overlapping_appointment_update(db_conn, cleanup_trigger
 
         err_msg = str(exc_info.value)
         assert "Doctor already has an overlapping appointment in this time slot" in err_msg or "45000" in err_msg
+
+
+def test_trigger_enforces_overlap_on_in_progress_status(db_conn, cleanup_trigger_test_appointments):
+    """
+    Verifies that an appointment in 'In_Progress' status correctly blocks overlapping bookings.
+    """
+    test_date = date(2027, 5, 12)
+    doctor_id = 1
+    patient_id = 1
+    branch_id = 1
+
+    with db_conn.cursor() as cur:
+        # 1. Insert appointment directly with In_Progress status: 11:00:00 - 11:30:00
+        cur.execute(
+            """
+            INSERT INTO Appointment
+            (Patient_ID, Doctor_ID, Branch_ID, Appointment_Date, Start_Time, Duration_Minutes, Appointment_Type, Status, Reason_For_Visit)
+            VALUES (%s, %s, %s, %s, %s, %s, 'Standard', 'In_Progress', 'Active consultation in progress')
+            """,
+            (patient_id, doctor_id, branch_id, test_date, "11:00:00", 30),
+        )
+        in_prog_id = cur.lastrowid
+        cleanup_trigger_test_appointments.append(in_prog_id)
+        db_conn.commit()
+
+        # 2. Attempt to insert overlapping appointment (11:15:00)
+        with pytest.raises((pymysql.err.OperationalError, pymysql.err.InternalError)) as exc_info:
+            cur.execute(
+                """
+                INSERT INTO Appointment
+                (Patient_ID, Doctor_ID, Branch_ID, Appointment_Date, Start_Time, Duration_Minutes, Appointment_Type, Status, Reason_For_Visit)
+                VALUES (%s, %s, %s, %s, %s, %s, 'Standard', 'Scheduled', 'Conflicting booking')
+                """,
+                (patient_id, doctor_id, branch_id, test_date, "11:15:00", 30),
+            )
+            db_conn.commit()
+
+        db_conn.rollback()
+
+        err_msg = str(exc_info.value)
+        assert "Doctor already has an overlapping appointment in this time slot" in err_msg or "45000" in err_msg
+

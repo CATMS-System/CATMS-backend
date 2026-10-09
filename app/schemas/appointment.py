@@ -20,6 +20,7 @@ class AppointmentType(str, Enum):
 class AppointmentStatus(str, Enum):
     SCHEDULED = "Scheduled"
     CONFIRMED = "Confirmed"
+    IN_PROGRESS = "In_Progress"
     COMPLETED = "Completed"
     CANCELLED = "Cancelled"
     NO_SHOW = "No_Show"
@@ -116,6 +117,7 @@ class AppointmentStatusCountsResponse(BaseModel):
     total: int = Field(..., alias="Total")
     scheduled: int = Field(..., alias="Scheduled")
     confirmed: int = Field(..., alias="Confirmed")
+    in_progress: int = Field(default=0, alias="In_Progress")
     completed: int = Field(..., alias="Completed")
     cancelled: int = Field(..., alias="Cancelled")
     no_show: int = Field(..., alias="No_Show")

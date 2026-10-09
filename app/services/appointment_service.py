@@ -78,7 +78,7 @@ def check_doctor_appointment_overlap(
         FROM Appointment
         WHERE Doctor_ID = %s
           AND Appointment_Date = %s
-          AND Status IN ('Scheduled', 'Confirmed', 'Completed')
+          AND Status IN ('Scheduled', 'Confirmed', 'In_Progress', 'Completed')
           AND (
               (%s < ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))) AND
               (%s > Start_Time)
@@ -355,6 +355,7 @@ def get_appointment_status_counts(
             COUNT(*) AS Total,
             COALESCE(SUM(CASE WHEN Status = 'Scheduled' THEN 1 ELSE 0 END), 0) AS Scheduled,
             COALESCE(SUM(CASE WHEN Status = 'Confirmed' THEN 1 ELSE 0 END), 0) AS Confirmed,
+            COALESCE(SUM(CASE WHEN Status = 'In_Progress' THEN 1 ELSE 0 END), 0) AS In_Progress,
             COALESCE(SUM(CASE WHEN Status = 'Completed' THEN 1 ELSE 0 END), 0) AS Completed,
             COALESCE(SUM(CASE WHEN Status = 'Cancelled' THEN 1 ELSE 0 END), 0) AS Cancelled,
             COALESCE(SUM(CASE WHEN Status = 'No_Show' THEN 1 ELSE 0 END), 0) AS No_Show,
@@ -387,6 +388,7 @@ def get_appointment_status_counts(
         "Total": int(row["Total"]),
         "Scheduled": int(row["Scheduled"]),
         "Confirmed": int(row["Confirmed"]),
+        "In_Progress": int(row.get("In_Progress", 0)),
         "Completed": int(row["Completed"]),
         "Cancelled": int(row["Cancelled"]),
         "No_Show": int(row["No_Show"]),
@@ -475,7 +477,7 @@ def get_doctor_available_slots(
         SELECT Appointment_ID, Start_Time, Duration_Minutes, Status
         FROM Appointment
         WHERE Doctor_ID = %s AND Appointment_Date = %s
-          AND Status IN ('Scheduled', 'Confirmed', 'Completed')
+          AND Status IN ('Scheduled', 'Confirmed', 'In_Progress', 'Completed')
     """
     with conn.cursor() as cur:
         cur.execute(appt_query, (doctor_id, appointment_date))
@@ -686,7 +688,7 @@ def get_daily_queue(
         JOIN Branch b ON a.Branch_ID = b.Branch_ID
         WHERE a.Branch_ID = %s
           AND a.Appointment_Date = %s
-          AND a.Status IN ('Scheduled', 'Confirmed')
+          AND a.Status IN ('Scheduled', 'Confirmed', 'In_Progress')
         ORDER BY a.Start_Time ASC, a.Appointment_ID ASC
     """
 

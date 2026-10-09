@@ -223,6 +223,185 @@ def get_doctor_schedules(
     for s in schedules:
         s["Start_Time_Str"] = format_time_value(s["Start_Time"])
         s["End_Time_Str"] = format_time_value(s["End_Time"])
+        s["Start_Time"] = s["Start_Time_Str"]
+        s["End_Time"] = s["End_Time_Str"]
 
     return schedules
+
+
+class ScheduleNotFoundError(Exception):
+    def __init__(self, schedule_id: int):
+        self.schedule_id = schedule_id
+        super().__init__(f"Doctor schedule with ID {schedule_id} does not exist.")
+
+
+class ScheduleConflictError(Exception):
+    def __init__(self, message: str = "Doctor already has a schedule shift overlapping with this time interval."):
+        self.message = message
+        super().__init__(self.message)
+
+
+class ScheduleValidationError(Exception):
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(self.message)
+
+
+def normalize_schedule_time(val: Any) -> str:
+    """Normalizes time or string input to HH:MM:SS format."""
+    if isinstance(val, str):
+        val = val.strip()
+        parts = val.split(":")
+        if len(parts) == 2:
+            return f"{int(parts[0]):02d}:{int(parts[1]):02d}:00"
+        elif len(parts) == 3:
+            return f"{int(parts[0]):02d}:{int(parts[1]):02d}:{int(parts[2]):02d}"
+        raise ScheduleValidationError(f"Invalid time format: {val}")
+    elif hasattr(val, "strftime"):
+        return val.strftime("%H:%M:%S")
+    raise ScheduleValidationError(f"Invalid time value: {val}")
+
+
+def get_schedule_by_id(conn: pymysql.Connection, schedule_id: int) -> Dict[str, Any]:
+    query = """
+        SELECT 
+            ds.Schedule_ID,
+            ds.Doctor_ID,
+            ds.Branch_ID,
+            b.Branch_Name,
+            b.City AS Branch_City,
+            ds.Day_Of_Week,
+            ds.Start_Time,
+            ds.End_Time,
+            ROUND(TIME_TO_SEC(TIMEDIFF(ds.End_Time, ds.Start_Time)) / 60) AS Shift_Duration_Minutes,
+            ds.Availability_Status
+        FROM Doctor_Schedule ds
+        JOIN Branch b ON ds.Branch_ID = b.Branch_ID
+        WHERE ds.Schedule_ID = %s
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(query, (schedule_id,))
+        schedule = cursor.fetchone()
+
+    if not schedule:
+        raise ScheduleNotFoundError(schedule_id)
+
+    schedule["Start_Time_Str"] = format_time_value(schedule["Start_Time"])
+    schedule["End_Time_Str"] = format_time_value(schedule["End_Time"])
+    schedule["Start_Time"] = schedule["Start_Time_Str"]
+    schedule["End_Time"] = schedule["End_Time_Str"]
+    return schedule
+
+
+def check_schedule_overlap(
+    conn: pymysql.Connection,
+    doctor_id: int,
+    day_of_week: str,
+    start_time_str: str,
+    end_time_str: str,
+    exclude_schedule_id: Optional[int] = None
+) -> None:
+    query = """
+        SELECT Schedule_ID, Start_Time, End_Time
+        FROM Doctor_Schedule
+        WHERE Doctor_ID = %s
+          AND Day_Of_Week = %s
+          AND (%s < End_Time AND %s > Start_Time)
+    """
+    params = [doctor_id, day_of_week, start_time_str, end_time_str]
+    if exclude_schedule_id is not None:
+        query += " AND Schedule_ID != %s"
+        params.append(exclude_schedule_id)
+
+    with conn.cursor() as cursor:
+        cursor.execute(query, tuple(params))
+        conflict = cursor.fetchone()
+        if conflict:
+            raise ScheduleConflictError(
+                f"Doctor already has a shift on {day_of_week} overlapping with {start_time_str} - {end_time_str}."
+            )
+
+
+def create_doctor_schedule(
+    conn: pymysql.Connection,
+    doctor_id: int,
+    branch_id: int,
+    day_of_week: str,
+    start_time: str,
+    end_time: str,
+    availability_status: str = "Active"
+) -> Dict[str, Any]:
+    norm_start = normalize_schedule_time(start_time)
+    norm_end = normalize_schedule_time(end_time)
+
+    if norm_start >= norm_end:
+        raise ScheduleValidationError("Start time must be strictly before end time.")
+
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT Doctor_ID FROM Doctor WHERE Doctor_ID = %s", (doctor_id,))
+        if not cursor.fetchone():
+            raise DoctorNotFoundError(doctor_id)
+
+        cursor.execute("SELECT Branch_ID FROM Branch WHERE Branch_ID = %s", (branch_id,))
+        if not cursor.fetchone():
+            raise ScheduleValidationError(f"Branch with ID {branch_id} does not exist.")
+
+    check_schedule_overlap(conn, doctor_id, day_of_week, norm_start, norm_end)
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO Doctor_Schedule 
+            (Doctor_ID, Branch_ID, Day_Of_Week, Start_Time, End_Time, Availability_Status)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (doctor_id, branch_id, day_of_week, norm_start, norm_end, availability_status)
+        )
+        schedule_id = cursor.lastrowid
+        conn.commit()
+
+    return get_schedule_by_id(conn, schedule_id)
+
+
+def update_doctor_schedule(
+    conn: pymysql.Connection,
+    schedule_id: int,
+    branch_id: Optional[int] = None,
+    day_of_week: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    availability_status: Optional[str] = None
+) -> Dict[str, Any]:
+    existing = get_schedule_by_id(conn, schedule_id)
+    doctor_id = existing["Doctor_ID"]
+
+    eff_branch_id = branch_id if branch_id is not None else existing["Branch_ID"]
+    eff_day = day_of_week if day_of_week is not None else existing["Day_Of_Week"]
+    eff_start = normalize_schedule_time(start_time) if start_time is not None else existing["Start_Time_Str"]
+    eff_end = normalize_schedule_time(end_time) if end_time is not None else existing["End_Time_Str"]
+    eff_status = availability_status if availability_status is not None else existing["Availability_Status"]
+
+    if eff_start >= eff_end:
+        raise ScheduleValidationError("Start time must be strictly before end time.")
+
+    if branch_id is not None:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT Branch_ID FROM Branch WHERE Branch_ID = %s", (branch_id,))
+            if not cursor.fetchone():
+                raise ScheduleValidationError(f"Branch with ID {branch_id} does not exist.")
+
+    check_schedule_overlap(conn, doctor_id, eff_day, eff_start, eff_end, exclude_schedule_id=schedule_id)
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE Doctor_Schedule
+            SET Branch_ID = %s, Day_Of_Week = %s, Start_Time = %s, End_Time = %s, Availability_Status = %s
+            WHERE Schedule_ID = %s
+            """,
+            (eff_branch_id, eff_day, eff_start, eff_end, eff_status, schedule_id)
+        )
+        conn.commit()
+
+    return get_schedule_by_id(conn, schedule_id)
 

@@ -21,7 +21,7 @@ BEGIN
     SET new_end_time = ADDTIME(NEW.Start_Time, SEC_TO_TIME(NEW.Duration_Minutes * 60));
 
     -- Only enforce check for active appointment states
-    IF NEW.Status IN ('Scheduled', 'Confirmed') THEN
+    IF NEW.Status IN ('Scheduled', 'Confirmed', 'In_Progress') THEN
         -- Serialize appointments for target doctor to prevent concurrency race conditions
         SELECT Doctor_ID INTO locked_doc_id FROM Doctor WHERE Doctor_ID = NEW.Doctor_ID FOR UPDATE;
 
@@ -30,7 +30,7 @@ BEGIN
         FROM Appointment
         WHERE Doctor_ID = NEW.Doctor_ID
           AND Appointment_Date = NEW.Appointment_Date
-          AND Status IN ('Scheduled', 'Confirmed', 'Completed')
+          AND Status IN ('Scheduled', 'Confirmed', 'In_Progress', 'Completed')
           AND (
               (NEW.Start_Time < ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))) AND
               (new_end_time > Start_Time)
@@ -62,7 +62,7 @@ BEGIN
     SET new_end_time = ADDTIME(NEW.Start_Time, SEC_TO_TIME(NEW.Duration_Minutes * 60));
 
     -- Only enforce check for active appointment states
-    IF NEW.Status IN ('Scheduled', 'Confirmed') THEN
+    IF NEW.Status IN ('Scheduled', 'Confirmed', 'In_Progress') THEN
         -- Serialize appointments for target doctor to prevent concurrency race conditions
         SELECT Doctor_ID INTO locked_doc_id FROM Doctor WHERE Doctor_ID = NEW.Doctor_ID FOR UPDATE;
 
@@ -72,7 +72,7 @@ BEGIN
         WHERE Doctor_ID = NEW.Doctor_ID
           AND Appointment_Date = NEW.Appointment_Date
           AND Appointment_ID != NEW.Appointment_ID
-          AND Status IN ('Scheduled', 'Confirmed', 'Completed')
+          AND Status IN ('Scheduled', 'Confirmed', 'In_Progress', 'Completed')
           AND (
               (NEW.Start_Time < ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))) AND
               (new_end_time > Start_Time)
