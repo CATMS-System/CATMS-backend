@@ -2,12 +2,7 @@ from fastapi import APIRouter, Depends
 import pymysql
 from app.api.deps import get_db
 
-from app.api.v1.endpoints import treatments, consultations
-
 api_router = APIRouter()
-api_router.include_router(treatments.router, prefix="/treatments", tags=["Treatments"])
-api_router.include_router(consultations.router, prefix="/consultations", tags=["Consultations"])
-
 
 
 @api_router.get("/health", tags=["Health"])
@@ -30,11 +25,16 @@ def health_check(conn: pymysql.Connection = Depends(get_db)):
         "query_result": result
     }
 
+# Domain routers — mounted after /health to match develop's convention
+from app.api.v1.endpoints import treatments, consultations
+
+api_router.include_router(treatments.router, prefix="/treatments", tags=["Treatments"])
+api_router.include_router(consultations.router, prefix="/consultations", tags=["Consultations"])
+
 # Team members will mount their domain routers here:
 # api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 # api_router.include_router(patients.router, prefix="/patients", tags=["Patients"])
 # api_router.include_router(doctors.router, prefix="/doctors", tags=["Doctors"])
 # api_router.include_router(appointments.router, prefix="/appointments", tags=["Appointments"])
-# api_router.include_router(consultations.router, prefix="/consultations", tags=["Consultations"])
 # api_router.include_router(billing.router, prefix="/billing", tags=["Billing"])
 # api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])

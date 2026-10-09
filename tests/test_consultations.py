@@ -1,10 +1,17 @@
-import asyncio
-import json
+"""
+Clinical Consultation Module Integration Tests.
+
+NOTE: The MySQL database must be seeded before running these tests.
+Run `python sql/run_all.py` first to ensure all schema tables, stored procedures,
+and seed records exist.
+"""
+
 import os
 import sys
 from datetime import date, timedelta
 from decimal import Decimal
 import pymysql.cursors
+from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -24,44 +31,7 @@ from app.api.v1.endpoints.consultations import (
     read_patient_consultation_history,
 )
 
-
-async def _dispatch_asgi(method: str, path: str, json_body: dict = None):
-    """Dispatches an HTTP request through the FastAPI ASGI application pipeline."""
-    body_bytes = json.dumps(json_body).encode("utf-8") if json_body is not None else b""
-    headers = [
-        [b"host", b"testserver"],
-        [b"content-type", b"application/json"],
-        [b"content-length", str(len(body_bytes)).encode("ascii")],
-    ]
-    scope = {
-        "type": "http",
-        "http_version": "1.1",
-        "method": method,
-        "path": path,
-        "raw_path": path.encode("ascii"),
-        "query_string": b"",
-        "headers": headers,
-    }
-    response_body = []
-    response_status = None
-
-    async def receive():
-        return {"type": "http.request", "body": body_bytes, "more_body": False}
-
-    async def send(message):
-        nonlocal response_status
-        if message["type"] == "http.response.start":
-            response_status = message["status"]
-        elif message["type"] == "http.response.body":
-            response_body.append(message.get("body", b""))
-
-    await app(scope, receive, send)
-    raw_text = b"".join(response_body).decode("utf-8")
-    try:
-        parsed = json.loads(raw_text) if raw_text else {}
-    except Exception:
-        parsed = {"raw": raw_text}
-    return response_status, parsed
+client = TestClient(app)
 
 
 def test_successful_consultation_creation():
@@ -103,7 +73,8 @@ def test_successful_consultation_creation():
             ]
         }
 
-        status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
+        response = client.post("/api/v1/consultations", json=payload)
+        status_code, body = response.status_code, response.json()
         assert status_code == 201, f"Expected 201, got {status_code}: {body}"
         assert "consultation_id" in body and body["consultation_id"] is not None
         assert "invoice_id" in body and body["invoice_id"] is not None
@@ -187,7 +158,8 @@ def test_invalid_treatment_id_rollback():
             ]
         }
 
-        status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
+        response = client.post("/api/v1/consultations", json=payload)
+        status_code, body = response.status_code, response.json()
         assert status_code == 422, f"Expected 422, got {status_code}: {body}"
         assert "999999" in body.get("detail", "")
 
@@ -278,7 +250,8 @@ def test_discontinued_treatment_rejected():
             ]
         }
 
-        status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
+        response = client.post("/api/v1/consultations", json=payload)
+        status_code, body = response.status_code, response.json()
         assert status_code == 422, f"Expected 422, got {status_code}: {body}"
         assert "not active" in body.get("detail", "").lower()
 
@@ -340,7 +313,8 @@ def test_completed_appointment_returns_409():
             "items": []
         }
 
-        status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
+        response = client.post("/api/v1/consultations", json=payload)
+        status_code, body = response.status_code, response.json()
         assert status_code == 409, f"Expected 409, got {status_code}: {body}"
         assert "completed" in body.get("detail", "").lower()
 
@@ -384,7 +358,8 @@ def test_cancelled_appointment_returns_409():
             "items": []
         }
 
-        status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
+        response = client.post("/api/v1/consultations", json=payload)
+        status_code, body = response.status_code, response.json()
         assert status_code == 409, f"Expected 409, got {status_code}: {body}"
         assert "cancelled" in body.get("detail", "").lower()
 
@@ -433,7 +408,8 @@ def test_duplicate_consultation_returns_409():
             "items": []
         }
 
-        status_code, body = asyncio.run(_dispatch_asgi("POST", "/api/v1/consultations", payload))
+        response = client.post("/api/v1/consultations", json=payload)
+        status_code, body = response.status_code, response.json()
         assert status_code == 409, f"Expected 409, got {status_code}: {body}"
         assert "already exists" in body.get("detail", "").lower()
 
@@ -480,7 +456,8 @@ def test_patient_history_returns_newest_first():
             c_id = cur.lastrowid
             conn.commit()
 
-        status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/patient/1"))
+        response = client.get("/api/v1/consultations/patient/1")
+        status_code, body = response.status_code, response.json()
         assert status_code == 200, f"Expected 200, got {status_code}: {body}"
         assert isinstance(body, list)
         assert len(body) >= 2, f"Expected at least 2 consultations, got {len(body)}"
@@ -508,7 +485,8 @@ def test_patient_history_returns_newest_first():
 
 def test_unknown_consultation_id_returns_404():
     """Verifies that querying an unknown consultation ID returns 404 Not Found."""
-    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/999999"))
+    response = client.get("/api/v1/consultations/999999")
+    status_code, body = response.status_code, response.json()
     assert status_code == 404, f"Expected 404, got {status_code}: {body}"
     assert "not found" in body.get("detail", "").lower()
     print("Test Passed: Unknown consultation id returned 404 Not Found.")
@@ -533,7 +511,8 @@ def test_get_consultation_by_id_seeded_1():
     finally:
         conn.close()
 
-    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/1"))
+    response = client.get("/api/v1/consultations/1")
+    status_code, body = response.status_code, response.json()
     assert status_code == 200, f"Expected 200, got {status_code}: {body}"
     assert body["consultation_id"] == 1
     assert body["patient_name"] == "John Doe"
@@ -549,7 +528,8 @@ def test_get_consultation_by_id_seeded_1():
 
 def test_get_patient_consultation_history_not_found():
     """Verifies GET /api/v1/consultations/patient/{patient_id} returns 404 for nonexistent patient."""
-    status_code, body = asyncio.run(_dispatch_asgi("GET", "/api/v1/consultations/patient/999999"))
+    response = client.get("/api/v1/consultations/patient/999999")
+    status_code, body = response.status_code, response.json()
     assert status_code == 404, f"Expected 404, got {status_code}: {body}"
     assert "not found" in body.get("detail", "").lower()
     print("Test Passed: GET /api/v1/consultations/patient/999999 returned 404 Not Found.")
