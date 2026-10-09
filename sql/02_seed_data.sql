@@ -37,20 +37,20 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- =====================================================================
 
 INSERT INTO User_Account (Account_ID, Username, Password_Hash, System_Role, Account_Status, Last_Login_At) VALUES
-(1,  'admin_alana',     '$2a$12$e8YkZ7vUj2yU3W9kK7kQe.1bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Admin',   'Active', '2026-08-23 08:30:00'),
-(2,  'dr_bennett',      '$2a$12$k8YkZ7vUj2yU3W9kK7kQe.2bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Doctor',  'Active', '2026-08-23 08:45:12'),
-(3,  'dr_jenkins',      '$2a$12$m8YkZ7vUj2yU3W9kK7kQe.3bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Doctor',  'Active', '2026-08-23 09:10:05'),
-(4,  'dr_perera',       '$2a$12$n8YkZ7vUj2yU3W9kK7kQe.4bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Doctor',  'Active', '2026-08-23 09:15:30'),
-(5,  'nurse_chen',      '$2a$12$p8YkZ7vUj2yU3W9kK7kQe.5bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Receptionist',   'Active', '2026-08-23 08:00:00'),
-(6,  'mgr_vance',       '$2a$12$q8YkZ7vUj2yU3W9kK7kQe.6bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Branch_Manager', 'Active', '2026-08-23 08:15:20'),
-(7,  'billing_patel',   '$2a$12$r8YkZ7vUj2yU3W9kK7kQe.7bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Billing_Staff',  'Active', '2026-08-23 08:25:40'),
-(8,  'recept_shenaya',  '$2a$12$s8YkZ7vUj2yU3W9kK7kQe.8bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Receptionist',   'Active', '2026-08-23 08:05:10'),
-(9,  'mgr_silva',       '$2a$12$t8YkZ7vUj2yU3W9kK7kQe.9bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Branch_Manager', 'Active', '2026-08-23 08:20:00'),
-(10, 'mgr_desilva',     '$2a$12$u8YkZ7vUj2yU3W9kK7kQe.0bZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Branch_Manager', 'Active', '2026-08-23 08:22:15'),
-(11, 'pat_johndoe',     '$2a$12$v8YkZ7vUj2yU3W9kK7kQe.1cZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Patient', 'Active', '2026-08-22 19:40:22'),
-(12, 'pat_clara',       '$2a$12$w8YkZ7vUj2yU3W9kK7kQe.2cZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Patient', 'Active', '2026-08-23 07:15:45'),
-(13, 'pat_david',       '$2a$12$x8YkZ7vUj2yU3W9kK7kQe.3cZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Patient', 'Active', '2026-08-21 14:10:00'),
-(14, 'pat_ananya',      '$2a$12$y8YkZ7vUj2yU3W9kK7kQe.4cZ8Zq6R2bF2h7Q6p7K1Z8R0q4f1S3e', 'Patient', 'Active', '2026-08-20 11:30:15');
+(1,  'admin_alana',     '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Admin',          'Active', '2026-08-23 08:30:00'),
+(2,  'dr_bennett',      '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Doctor',         'Active', '2026-08-23 08:45:12'),
+(3,  'dr_jenkins',      '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Doctor',         'Active', '2026-08-23 09:10:05'),
+(4,  'dr_perera',       '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Doctor',         'Active', '2026-08-23 09:15:30'),
+(5,  'nurse_chen',      '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Receptionist',   'Active', '2026-08-23 08:00:00'),
+(6,  'mgr_vance',       '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Branch_Manager', 'Active', '2026-08-23 08:15:20'),
+(7,  'billing_patel',   '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Billing_Staff',  'Active', '2026-08-23 08:25:40'),
+(8,  'recept_shenaya',  '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Receptionist',   'Active', '2026-08-23 08:05:10'),
+(9,  'mgr_silva',       '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Branch_Manager', 'Active', '2026-08-23 08:20:00'),
+(10, 'mgr_desilva',     '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Branch_Manager', 'Active', '2026-08-23 08:22:15'),
+(11, 'pat_johndoe',     '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Patient',        'Active', '2026-08-22 19:40:22'),
+(12, 'pat_clara',       '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Patient',        'Active', '2026-08-23 07:15:45'),
+(13, 'pat_david',       '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Patient',        'Active', '2026-08-21 14:10:00'),
+(14, 'pat_ananya',      '$2b$12$75So7Vsc69vCyj0WxvEbK.UBJvMMg3E73005qucCXzVyOxGIEHMI.', 'Patient',        'Active', '2026-08-20 11:30:15');
 
 -- =====================================================================
 -- DOMAIN 2: ORGANIZATION, STAFF & SCHEDULING
