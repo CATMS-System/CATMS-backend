@@ -2,11 +2,14 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 import pymysql
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_roles
+from app.schemas.user import SystemRoleEnum
 from app.schemas.treatment import TreatmentCategoryOut, TreatmentOut
 from app.services.treatment_service import get_categories, get_catalogue
 
-router = APIRouter()
+router = APIRouter(
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Doctor, SystemRoleEnum.Billing_Staff, SystemRoleEnum.Receptionist]))]
+)
 
 
 @router.get("/categories", response_model=List[TreatmentCategoryOut])

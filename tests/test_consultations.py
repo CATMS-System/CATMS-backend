@@ -11,6 +11,7 @@ import sys
 from datetime import date, timedelta
 from decimal import Decimal
 import pymysql.cursors
+import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -30,8 +31,28 @@ from app.api.v1.endpoints.consultations import (
     read_consultation,
     read_patient_consultation_history,
 )
+from app.api.deps import get_current_user
+from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def auth_override():
+    mock_doctor = UserAccount(
+        Account_ID=4,
+        Username="dr_bennett",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Doctor,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: mock_doctor
+    yield
+    if previous is not None:
+        app.dependency_overrides[get_current_user] = previous
+    else:
+        app.dependency_overrides.pop(get_current_user, None)
 
 
 def test_successful_consultation_creation():

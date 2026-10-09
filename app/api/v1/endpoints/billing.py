@@ -6,7 +6,8 @@ from app.schemas.billing import (
     ClaimCreate,
     ClaimStatusUpdate,
 )
-from app.api.deps import get_db
+from app.api.deps import get_db, require_roles
+from app.schemas.user import SystemRoleEnum
 from app.repositories.invoice_repository import InvoiceRepository
 from app.services.billing_service import BillingService
 
@@ -14,7 +15,10 @@ from app.services.billing_service import BillingService
 router = APIRouter()
 
 
-@router.get("/invoices")
+@router.get(
+    "/invoices",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Patient]))],
+)
 def get_invoices(
     db: pymysql.Connection = Depends(get_db)
 ):
@@ -23,7 +27,10 @@ def get_invoices(
     return invoice_repository.get_all()
 
 
-@router.get("/invoices/{invoice_id}")
+@router.get(
+    "/invoices/{invoice_id}",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Patient]))],
+)
 def get_invoice(
     invoice_id: int,
     db: pymysql.Connection = Depends(get_db)
@@ -35,7 +42,10 @@ def get_invoice(
     return details
 
 
-@router.post("/invoices/{invoice_id}/payments")
+@router.post(
+    "/invoices/{invoice_id}/payments",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin]))],
+)
 def record_payment(
     invoice_id: int,
     payment_data: PaymentCreate,
@@ -60,7 +70,10 @@ def record_payment(
         )
 
 
-@router.post("/invoices/{invoice_id}/claims")
+@router.post(
+    "/invoices/{invoice_id}/claims",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin]))],
+)
 def submit_insurance_claim(
     invoice_id: int,
     claim_data: ClaimCreate,
@@ -84,7 +97,10 @@ def submit_insurance_claim(
         )
 
 
-@router.patch("/claims/{claim_id}/status")
+@router.patch(
+    "/claims/{claim_id}/status",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin]))],
+)
 def update_claim_status(
     claim_id: int,
     status_data: ClaimStatusUpdate,

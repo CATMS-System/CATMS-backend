@@ -12,8 +12,25 @@ from tests.member2.helpers import patient_payload
 
 @pytest.fixture
 def client():
-    with TestClient(app) as test_client:
-        yield test_client
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    mock_user = UserAccount(
+        Account_ID=1,
+        Username="admin_tester",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Admin,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        if previous is not None:
+            app.dependency_overrides[get_current_user] = previous
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
 
 
 # direct connection for checks and cleanup

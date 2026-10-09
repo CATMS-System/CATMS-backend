@@ -9,7 +9,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 import pymysql
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_roles
+from app.schemas.user import SystemRoleEnum
 from app.schemas.consultation import (
     ConsultationCreate,
     ConsultationCreateResponse,
@@ -25,8 +26,19 @@ from app.services.consultation_service import (
 router = APIRouter()
 
 
-@router.post("", response_model=ConsultationCreateResponse, status_code=status.HTTP_201_CREATED)
-@router.post("/", response_model=ConsultationCreateResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
+@router.post(
+    "",
+    response_model=ConsultationCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles([SystemRoleEnum.Doctor, SystemRoleEnum.Admin]))],
+)
+@router.post(
+    "/",
+    response_model=ConsultationCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+    dependencies=[Depends(require_roles([SystemRoleEnum.Doctor, SystemRoleEnum.Admin]))],
+)
 def record_consultation(
     payload: ConsultationCreate,
     conn: pymysql.Connection = Depends(get_db)
@@ -82,7 +94,12 @@ def record_consultation(
         )
 
 
-@router.get("/patient/{patient_id}", response_model=List[ConsultationHistoryItem], status_code=status.HTTP_200_OK)
+@router.get(
+    "/patient/{patient_id}",
+    response_model=List[ConsultationHistoryItem],
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_roles([SystemRoleEnum.Doctor, SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Patient]))],
+)
 def read_patient_consultation_history(
     patient_id: int,
     conn: pymysql.Connection = Depends(get_db)
@@ -96,7 +113,12 @@ def read_patient_consultation_history(
     return [ConsultationHistoryItem(**item) for item in history]
 
 
-@router.get("/{consultation_id}", response_model=ConsultationOut, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{consultation_id}",
+    response_model=ConsultationOut,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_roles([SystemRoleEnum.Doctor, SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Patient]))],
+)
 def read_consultation(
     consultation_id: int,
     conn: pymysql.Connection = Depends(get_db)

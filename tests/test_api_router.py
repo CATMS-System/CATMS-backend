@@ -3,7 +3,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_user
+from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
 from app.core.config import settings
 from app.main import app
 
@@ -25,6 +26,13 @@ REPORT_ROUTES = [
 def client():
     previous = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = lambda: MagicMock()
+    app.dependency_overrides[get_current_user] = lambda: UserAccount(
+        Account_ID=1,
+        Username="admin_tester",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Admin,
+        Account_Status=AccountStatusEnum.Active,
+    )
     try:
         with TestClient(app) as client:
             yield client

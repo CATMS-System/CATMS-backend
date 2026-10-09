@@ -3,11 +3,14 @@ from datetime import date
 import pymysql
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_roles
+from app.schemas.user import SystemRoleEnum
 from app.services.report_service import ReportService
 
 
-router = APIRouter()
+router = APIRouter(
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager]))]
+)
 
 
 @router.get("/branch-daily-summary")

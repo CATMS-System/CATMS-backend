@@ -9,7 +9,8 @@ from typing import List, Optional
 import pymysql
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_roles
+from app.schemas.user import SystemRoleEnum
 from app.schemas.appointment import (
     AppointmentCreate,
     WalkInAppointmentCreate,
@@ -41,6 +42,7 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     summary="Book a standard scheduled appointment",
     description="Validates slot availability against doctor schedule and existing bookings, then atomically creates an appointment.",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient]))],
 )
 def create_appointment(
     payload: AppointmentCreate,
@@ -88,6 +90,7 @@ def create_appointment(
     status_code=status.HTTP_201_CREATED,
     summary="Register an emergency or unscheduled walk-in appointment",
     description="Creates an unscheduled walk-in appointment with Schedule_ID=NULL, Appointment_Type='Walk_In', and immediate Confirmed status.",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist]))],
 )
 def create_walk_in_appointment(
     payload: WalkInAppointmentCreate,
@@ -140,6 +143,7 @@ def create_walk_in_appointment(
     response_model=List[AppointmentResponse],
     summary="List appointments with optional date, doctor, branch, and status filters",
     description="Retrieves clinic appointments matching query filters with joined patient, doctor, and branch details.",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient]))],
 )
 def list_appointments(
     date: Optional[date] = Query(default=None, description="Filter by appointment date (YYYY-MM-DD)"),
@@ -165,6 +169,7 @@ def list_appointments(
     response_model=AppointmentStatusCountsResponse,
     summary="Get aggregated appointment status counts",
     description="Aggregates appointment status metrics for daily clinic operational oversight and queue displays.",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor]))],
 )
 def get_status_counts(
     date: Optional[date] = Query(default=None, description="Filter counts by appointment date (YYYY-MM-DD)"),
@@ -188,6 +193,7 @@ def get_status_counts(
     response_model=List[QueueItemResponse],
     summary="Get live clinic waiting queue",
     description="Retrieves the real-time active patient queue for a specific clinic branch and date, ordered chronologically with estimated wait times.",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor]))],
 )
 def get_clinic_queue(
     branch_id: int = Query(..., description="Clinic Branch ID", ge=1),
@@ -209,6 +215,7 @@ def get_clinic_queue(
     response_model=AppointmentResponse,
     summary="Get appointment details by ID",
     description="Retrieves a single appointment record with patient, doctor, and clinic details.",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient]))],
 )
 def get_appointment(
     appointment_id: int = Path(..., description="Unique Appointment ID", ge=1),
@@ -232,6 +239,7 @@ def get_appointment(
     response_model=AppointmentResponse,
     summary="Reschedule an appointment to a new date and time slot",
     description="Validates slot availability excluding current appointment, checks doctor schedule, and updates the appointment record.",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Patient]))],
 )
 def reschedule_existing_appointment(
     payload: AppointmentReschedule,
@@ -279,6 +287,7 @@ def reschedule_existing_appointment(
     response_model=AppointmentResponse,
     summary="Cancel an appointment with a mandatory reason",
     description="Marks an appointment as Cancelled and records an audit cancellation reason.",
+    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient]))],
 )
 def cancel_existing_appointment(
     payload: AppointmentCancel,
