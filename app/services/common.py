@@ -41,6 +41,10 @@ def convert_db_error(error: pymysql.MySQLError) -> HTTPException | None:
             detail = "An insurance provider with this name already exists"
         elif "Email" in message:
             detail = "An insurance provider with this email already exists"
+        elif "Username" in message:
+            detail = "That username is already taken"
+        elif "Account_ID" in message:
+            detail = "This patient already has an online account"
         else:
             detail = "Duplicate value for a unique field"
         return HTTPException(409, detail)
