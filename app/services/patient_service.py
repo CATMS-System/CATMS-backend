@@ -4,8 +4,9 @@ import re
 import pymysql
 from fastapi import HTTPException
 
+from app.core.security import get_password_hash
 from app.schemas.patient import PatientCreate, PatientUpdate
-from app.services import insurance_service
+from app.services import insurance_service, portal_service
 from app.services.common import (
     escape_like,
     lower_keys,
@@ -67,6 +68,7 @@ def get_patient_detail(conn: pymysql.Connection, patient_id: int) -> dict:
         patient["active_policies"] = insurance_service.get_policies(
             cursor, patient_id, only_active=True
         )
+        patient["portal_access"] = portal_service.get_portal_access(cursor, patient_id)
     return patient
 
 def register_patient(
@@ -79,10 +81,27 @@ def register_patient(
         if cursor.fetchone():
             raise HTTPException(409, "A patient with this NIC already exists")
 
+        # Auto-create User_Account for newly registered patient
+        clean_nic = data.nic.strip().lower()
+        username = f"pat_{clean_nic}"
+        cursor.execute("SELECT Account_ID FROM User_Account WHERE Username = %s", (username,))
+        existing_acc = cursor.fetchone()
+        if existing_acc:
+            patient_account_id = existing_acc.get("Account_ID") or existing_acc.get("account_id")
+        else:
+            default_password_hash = get_password_hash("Password123!")
+            cursor.execute(
+                "INSERT INTO User_Account (Username, Password_Hash, System_Role, Account_Status) "
+                "VALUES (%s, %s, 'Patient', 'Active')",
+                (username, default_password_hash),
+            )
+            patient_account_id = cursor.lastrowid
+
         cursor.execute(
-            "INSERT INTO Patient (First_Name, Last_Name, Date_Of_Birth, Gender, NIC, Contact_Number, Email, Street_Address, City, State_Province, Postal_Code) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "INSERT INTO Patient (Account_ID, First_Name, Last_Name, Date_Of_Birth, Gender, NIC, Contact_Number, Email, Street_Address, City, State_Province, Postal_Code) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
+                patient_account_id,
                 data.first_name,
                 data.last_name,
                 data.date_of_birth,
