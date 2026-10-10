@@ -12,15 +12,24 @@ import pytest
 from fastapi.testclient import TestClient
 from fastapi.encoders import jsonable_encoder
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_user
 from app.core.config import settings
 from app.db.connection import get_db_connection
 from app.main import app
 from app.repositories.invoice_repository import InvoiceRepository
 from app.repositories.payment_repository import PaymentRepository
 from app.schemas.billing import PaymentMethod
+from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
 from app.services.billing_service import BillingService
 from app.services.report_service import ReportService
+
+mock_admin_user = UserAccount(
+    Account_ID=1,
+    Username="admin_tester",
+    Password_Hash="",
+    System_Role=SystemRoleEnum.Admin,
+    Account_Status=AccountStatusEnum.Active,
+)
 
 
 pytestmark = pytest.mark.skipif(
@@ -219,6 +228,7 @@ def test_real_api_overpayment_returns_400(disposable_invoice):
     db, invoice_id, marker = disposable_invoice
     previous = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: mock_admin_user
     try:
         with TestClient(app) as client:
             response = client.post(
@@ -289,6 +299,7 @@ def test_real_billing_and_all_report_routes(disposable_invoice):
     db.commit()
     previous = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: mock_admin_user
     billing_base = f"{settings.API_V1_STR}/billing"
     try:
         with TestClient(app) as client:
@@ -351,6 +362,7 @@ def test_real_api_records_exact_cent_amounts(disposable_invoice, amount):
     db.commit()
     previous = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: mock_admin_user
     try:
         with TestClient(app) as client:
             response = client.post(f"{settings.API_V1_STR}/billing/invoices/{invoice_id}/payments", json={
@@ -370,6 +382,7 @@ def test_real_api_invalid_precision_returns_422_without_writes(disposable_invoic
     db, invoice_id, marker = disposable_invoice
     previous = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: mock_admin_user
     try:
         with TestClient(app) as client:
             response = client.post(f"{settings.API_V1_STR}/billing/invoices/{invoice_id}/payments", json={
@@ -448,6 +461,7 @@ def test_real_non_approval_amount_rejected_and_null_remains_valid(disposable_inv
     db.commit()
     previous = app.dependency_overrides.copy()
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: mock_admin_user
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
             path = f"{settings.API_V1_STR}/billing/claims/{claim_id}/status"
