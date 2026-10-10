@@ -658,7 +658,8 @@ def cancel_appointment(
 def get_daily_queue(
     conn: pymysql.Connection,
     branch_id: int,
-    queue_date: Optional[Union[date, str]] = None
+    queue_date: Optional[Union[date, str]] = None,
+    doctor_id: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """
     Retrieves active clinic queue for a given branch and date,
@@ -694,11 +695,15 @@ def get_daily_queue(
         WHERE a.Branch_ID = %s
           AND a.Appointment_Date = %s
           AND a.Status IN ('Scheduled', 'Confirmed', 'In_Progress')
-        ORDER BY a.Start_Time ASC, a.Appointment_ID ASC
     """
+    params: List[Any] = [branch_id, queue_date]
+    if doctor_id is not None:
+        query += " AND a.Doctor_ID = %s"
+        params.append(doctor_id)
+    query += " ORDER BY a.Start_Time ASC, a.Appointment_ID ASC"
 
     with conn.cursor() as cursor:
-        cursor.execute(query, (branch_id, queue_date))
+        cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
 
     queue_items = []
