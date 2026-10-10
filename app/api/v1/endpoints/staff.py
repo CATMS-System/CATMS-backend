@@ -3,7 +3,7 @@ import pymysql
 from typing import List, Optional
 from app.db.connection import get_db
 from app.schemas.organization import StaffCreate, StaffUpdate, StaffResponse
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import get_current_user, require_roles, get_staff_branch_id
 from app.schemas.user import UserAccount, SystemRoleEnum
 
 router = APIRouter()
@@ -197,10 +197,14 @@ def update_staff(
         if not existing_staff:
             raise HTTPException(status_code=404, detail="Staff not found")
             
-        # Optional: Ensure branch managers can only update their own branch staff
+        # Ensure branch managers can only update their own branch staff
         if current_user.System_Role == SystemRoleEnum.Branch_Manager:
-            # Check if staff belongs to manager's branch
-            pass
+            manager_branch_id = get_staff_branch_id(db, current_user)
+            if not manager_branch_id or existing_staff["Branch_ID"] != manager_branch_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Branch managers can only modify staff within their own branch.",
+                )
             
         cursor.execute(f"UPDATE Staff SET {set_clause} WHERE Staff_ID = %s", tuple(values))
         db.commit()
