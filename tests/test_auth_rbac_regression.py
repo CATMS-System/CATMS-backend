@@ -138,3 +138,44 @@ def test_rbac_forbidden_for_unauthorized_roles():
     assert res.status_code == 403
 
     app.dependency_overrides.clear()
+
+
+def test_read_users_me_returns_enriched_profile():
+    """Verifies that /auth/me enriches patient and staff profiles with database records."""
+    client = TestClient(app)
+
+    # 1. Patient user (Account 11 -> Patient 1)
+    app.dependency_overrides[get_current_user] = lambda: UserAccount(
+        Account_ID=11,
+        Username="pat_johndoe",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Patient,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    res = client.get("/api/v1/auth/me")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["Account_ID"] == 11
+    assert data["System_Role"] == "Patient"
+    assert data["Patient_ID"] == 1
+    assert data["First_Name"] == "John"
+    assert data["Last_Name"] == "Doe"
+
+    # 2. Doctor user (Account 2 -> Staff 1 / Doctor 1)
+    app.dependency_overrides[get_current_user] = lambda: UserAccount(
+        Account_ID=2,
+        Username="dr_bennett",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Doctor,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    res2 = client.get("/api/v1/auth/me")
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["Account_ID"] == 2
+    assert data2["System_Role"] == "Doctor"
+    assert data2["Doctor_ID"] == 1
+    assert data2["Staff_ID"] == 1
+    assert data2["Branch_ID"] == 1
+
+    app.dependency_overrides.clear()

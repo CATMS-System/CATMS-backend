@@ -44,6 +44,13 @@ class UserResponse(UserBase):
     Account_ID: int
     Account_Status: AccountStatusEnum
     Last_Login_At: Optional[datetime] = None
+    Patient_ID: Optional[int] = None
+    Staff_ID: Optional[int] = None
+    Branch_ID: Optional[int] = None
+    Doctor_ID: Optional[int] = None
+    First_Name: Optional[str] = None
+    Last_Name: Optional[str] = None
+    Email: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
