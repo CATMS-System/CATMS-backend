@@ -226,6 +226,7 @@ def get_clinic_queue(
     branch_id: int = Query(..., description="Clinic Branch ID", ge=1),
     date: Optional[date] = Query(default=None, description="Date of queue (YYYY-MM-DD); defaults to today"),
     doctor_id: Optional[int] = Query(default=None, description="Filter by Doctor ID", ge=1),
+    include_completed: bool = Query(default=False, description="Include completed consultations in queue"),
     conn: pymysql.Connection = Depends(get_db),
 ) -> List[QueueItemResponse]:
     """
@@ -236,6 +237,7 @@ def get_clinic_queue(
         branch_id=branch_id,
         queue_date=date,
         doctor_id=doctor_id,
+        include_completed=include_completed,
     )
 
 

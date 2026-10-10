@@ -8,15 +8,10 @@ class InvoiceRepository:
 
     def get_all(self, patient_id=None, branch_id=None):
         query = """
-            SELECT i.Invoice_ID, i.Consultation_ID, i.Appointment_ID,
-                   i.Patient_ID, i.Patient_Name, i.Doctor_ID, i.Doctor_Name,
-                   i.Invoice_Date, i.Billed_Consultation_Fee,
-                   i.Total_Treatments_Fee, i.Invoice_Total,
-                   i.Insurance_Covered, i.Patient_Paid, i.Outstanding_Balance,
-                   i.Invoice_Status,
-                   b.Branch_ID, b.Branch_Name
-            FROM vw_Invoice_Summary i
-            JOIN Appointment a ON i.Appointment_ID = a.Appointment_ID
+            SELECT i.*, b.Branch_ID, b.Branch_Name
+            FROM Invoice i
+            JOIN Consultation c ON c.Consultation_ID = i.Consultation_ID
+            JOIN Appointment a ON a.Appointment_ID = c.Appointment_ID
             JOIN Branch b ON a.Branch_ID = b.Branch_ID
         """
         conditions = []

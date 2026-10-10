@@ -659,19 +659,23 @@ def get_daily_queue(
     conn: pymysql.Connection,
     branch_id: int,
     queue_date: Optional[Union[date, str]] = None,
-    doctor_id: Optional[int] = None
+    doctor_id: Optional[int] = None,
+    include_completed: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Retrieves active clinic queue for a given branch and date,
     ordered by start time and arrival sequence.
     Includes sequential Queue_Number and computed Estimated_Wait_Minutes.
+    Supports include_completed to retain completed consultations in doctor room displays.
     """
     if queue_date is None:
         queue_date = date.today()
     elif isinstance(queue_date, str):
         queue_date = date.fromisoformat(queue_date)
 
-    query = """
+    status_condition = "a.Status IN ('Scheduled', 'Confirmed', 'In_Progress', 'Completed')" if include_completed else "a.Status IN ('Scheduled', 'Confirmed', 'In_Progress')"
+
+    query = f"""
         SELECT 
             a.Appointment_ID,
             a.Patient_ID,
@@ -694,7 +698,7 @@ def get_daily_queue(
         JOIN Branch b ON a.Branch_ID = b.Branch_ID
         WHERE a.Branch_ID = %s
           AND a.Appointment_Date = %s
-          AND a.Status IN ('Scheduled', 'Confirmed', 'In_Progress')
+          AND {status_condition}
     """
     params: List[Any] = [branch_id, queue_date]
     if doctor_id is not None:
@@ -719,6 +723,8 @@ def get_daily_queue(
         else:
             start_str = str(raw_start)
 
+        is_completed = (row["Status"] == "Completed")
+
         item = {
             "Queue_Number": idx,
             "Appointment_ID": row["Appointment_ID"],
@@ -735,10 +741,11 @@ def get_daily_queue(
             "Appointment_Type": row["Appointment_Type"],
             "Status": row["Status"],
             "Reason_For_Visit": row["Reason_For_Visit"],
-            "Estimated_Wait_Minutes": cumulative_wait
+            "Estimated_Wait_Minutes": 0 if is_completed else cumulative_wait
         }
         queue_items.append(item)
-        cumulative_wait += row["Duration_Minutes"]
+        if not is_completed:
+            cumulative_wait += row["Duration_Minutes"]
 
     return queue_items
 

@@ -5,7 +5,7 @@ date/doctor/branch listing, status metrics, and single lookup.
 Option C: Plain PyMySQL.
 """
 
-from datetime import date
+from datetime import date, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
@@ -395,6 +395,59 @@ def test_get_clinic_queue(client, cleanup_appointments):
     assert queue[1]["Queue_Number"] == 2
     assert queue[1]["Appointment_ID"] == appt2["Appointment_ID"]
     assert queue[1]["Estimated_Wait_Minutes"] == 20  # Duration of first appointment
+
+
+def test_get_clinic_queue_include_completed(client, cleanup_appointments):
+    """Verifies that include_completed=true includes completed appointments without skewing wait times."""
+    from app.db.connection import get_db
+    test_date = (date.today() + timedelta(days=5)).isoformat()
+    # Create two appointments
+    appt1 = client.post("/api/v1/appointments/walk-in", json={
+        "patient_id": 1, "doctor_id": 1, "branch_id": 1,
+        "appointment_date": test_date, "start_time": "14:00:00",
+        "duration_minutes": 15, "reason_for_visit": "Completed Appt"
+    }).json()
+    cleanup_appointments.append(appt1["Appointment_ID"])
+
+    appt2 = client.post("/api/v1/appointments/walk-in", json={
+        "patient_id": 2, "doctor_id": 1, "branch_id": 1,
+        "appointment_date": test_date, "start_time": "14:30:00",
+        "duration_minutes": 20, "reason_for_visit": "Waiting Appt"
+    }).json()
+    cleanup_appointments.append(appt2["Appointment_ID"])
+
+    # Mark appt1 as Completed in DB
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE Appointment SET Status = 'Completed' WHERE Appointment_ID = %s", (appt1["Appointment_ID"],))
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Query with default (include_completed=False)
+    res_default = client.get(f"/api/v1/appointments/queue?branch_id=1&date={test_date}")
+    assert res_default.status_code == 200
+    ids_default = [item["Appointment_ID"] for item in res_default.json()]
+    assert appt1["Appointment_ID"] not in ids_default
+    assert appt2["Appointment_ID"] in ids_default
+
+    # Query with include_completed=true
+    res_completed = client.get(f"/api/v1/appointments/queue?branch_id=1&date={test_date}&include_completed=true")
+    assert res_completed.status_code == 200
+    items_completed = res_completed.json()
+    ids_completed = [item["Appointment_ID"] for item in items_completed]
+    assert appt1["Appointment_ID"] in ids_completed
+    assert appt2["Appointment_ID"] in ids_completed
+
+    # Find completed item and verify Estimated_Wait_Minutes is 0
+    c_item = next(item for item in items_completed if item["Appointment_ID"] == appt1["Appointment_ID"])
+    assert c_item["Status"] == "Completed"
+    assert c_item["Estimated_Wait_Minutes"] == 0
+
+    # Verify that completed appt1 did not add to appt2's wait time
+    w_item = next(item for item in items_completed if item["Appointment_ID"] == appt2["Appointment_ID"])
+    assert w_item["Estimated_Wait_Minutes"] == 0
 
 
 def test_patient_cannot_cancel_other_patient_appointment(client):
