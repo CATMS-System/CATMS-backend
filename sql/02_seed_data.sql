@@ -50,7 +50,9 @@ INSERT INTO User_Account (Account_ID, Username, Password_Hash, System_Role, Acco
 (11, 'pat_johndoe',     '$2b$12$W.5CSwcAAlr6d0aUHuOaOuocGRd8j849Vtf7xO0QpAdRSmixepKAS', 'Patient',        'Active', '2026-08-22 19:40:22'),
 (12, 'pat_clara',       '$2b$12$W.5CSwcAAlr6d0aUHuOaOuocGRd8j849Vtf7xO0QpAdRSmixepKAS', 'Patient',        'Active', '2026-08-23 07:15:45'),
 (13, 'pat_david',       '$2b$12$W.5CSwcAAlr6d0aUHuOaOuocGRd8j849Vtf7xO0QpAdRSmixepKAS', 'Patient',        'Active', '2026-08-21 14:10:00'),
-(14, 'pat_ananya',      '$2b$12$W.5CSwcAAlr6d0aUHuOaOuocGRd8j849Vtf7xO0QpAdRSmixepKAS', 'Patient',        'Active', '2026-08-20 11:30:15');
+(14, 'pat_ananya',      '$2b$12$W.5CSwcAAlr6d0aUHuOaOuocGRd8j849Vtf7xO0QpAdRSmixepKAS', 'Patient',        'Active', '2026-08-20 11:30:15'),
+(15, 'billing_kandy',   '$2b$12$W.5CSwcAAlr6d0aUHuOaOuocGRd8j849Vtf7xO0QpAdRSmixepKAS', 'Billing_Staff',  'Active', '2026-08-23 08:25:40'),
+(16, 'billing_galle',   '$2b$12$W.5CSwcAAlr6d0aUHuOaOuocGRd8j849Vtf7xO0QpAdRSmixepKAS', 'Billing_Staff',  'Active', '2026-08-23 08:25:40');
 
 -- =====================================================================
 -- DOMAIN 2: ORGANIZATION, STAFF & SCHEDULING
@@ -73,7 +75,9 @@ INSERT INTO Staff (Staff_ID, Account_ID, Branch_ID, First_Name, Last_Name, Job_T
 (7,  10, 3, 'Rohan',     'De Silva',       'Branch Operations Manager',    '+94 91 333 4444', 'rohan@careflow.com',        'Active'),
 (8,  4,  3, 'Nimal',     'Perera',         'Consultant Dermatologist',     '+94 71 456 7890', 'nimal@careflow.com',        'Active'),
 (9,  8,  1, 'Shenaya',   'Perera',         'Chief Medical Receptionist',   '+94 77 444 1122', 'receptionist@careflow.com', 'Active'),
-(10, 1,  1, 'Alana',     'Smith',          'System Administrator',         '+94 77 888 9900', 'admin@careflow.com',        'Active');
+(10, 1,  1, 'Alana',     'Smith',          'System Administrator',         '+94 77 888 9900', 'admin@careflow.com',        'Active'),
+(11, 15, 2, 'Kamal',     'Perera',         'Billing & Cashier Officer',    '+94 81 223 9999', 'kperera.billing@careflow.com', 'Active'),
+(12, 16, 3, 'Nirosha',   'Silva',          'Billing & Cashier Officer',    '+94 91 222 8888', 'nsilva.billing@careflow.com',  'Active');
 
 -- Step 3: Link Branch Managers back to Branch
 UPDATE Branch SET Manager_Staff_ID = 4 WHERE Branch_ID = 1;
