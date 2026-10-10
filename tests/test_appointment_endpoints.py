@@ -19,9 +19,9 @@ def client():
     from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
     mock_user = UserAccount(
         Account_ID=1,
-        Username="reception_test",
+        Username="admin_test",
         Password_Hash="",
-        System_Role=SystemRoleEnum.Receptionist,
+        System_Role=SystemRoleEnum.Admin,
         Account_Status=AccountStatusEnum.Active,
     )
     previous = app.dependency_overrides.get(get_current_user)
@@ -395,4 +395,223 @@ def test_get_clinic_queue(client, cleanup_appointments):
     assert queue[1]["Queue_Number"] == 2
     assert queue[1]["Appointment_ID"] == appt2["Appointment_ID"]
     assert queue[1]["Estimated_Wait_Minutes"] == 20  # Duration of first appointment
+
+
+def test_patient_cannot_cancel_other_patient_appointment(client):
+    """Verifies that a patient cannot cancel another patient's appointment (M3-1)."""
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    patient_user = UserAccount(
+        Account_ID=11,
+        Username="pat_johndoe",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Patient,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: patient_user
+    try:
+        # Appointment 5 belongs to Patient 4 (Ananya)
+        res = client.put(
+            "/api/v1/appointments/5/cancel",
+            json={"cancellation_reason": "Unauthorized cancellation attempt"}
+        )
+        assert res.status_code == 403
+        assert "Cannot cancel another patient's appointment" in res.json()["detail"]
+    finally:
+        if previous:
+            app.dependency_overrides[get_current_user] = previous
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_patient_cannot_reschedule_other_patient_appointment(client):
+    """Verifies that a patient cannot reschedule another patient's appointment (M3-1)."""
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    patient_user = UserAccount(
+        Account_ID=11,
+        Username="pat_johndoe",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Patient,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: patient_user
+    try:
+        # Appointment 5 belongs to Patient 4
+        res = client.put(
+            "/api/v1/appointments/5/reschedule",
+            json={
+                "new_date": "2026-12-01",
+                "new_start_time": "15:00:00",
+                "duration_minutes": 30,
+                "reschedule_reason": "Unauthorized reschedule"
+            }
+        )
+        assert res.status_code == 403
+        assert "Cannot reschedule another patient's appointment" in res.json()["detail"]
+    finally:
+        if previous:
+            app.dependency_overrides[get_current_user] = previous
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_patient_cannot_view_other_patient_appointment(client):
+    """Verifies that a patient cannot view details of another patient's appointment (M3-1)."""
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    patient_user = UserAccount(
+        Account_ID=11,
+        Username="pat_johndoe",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Patient,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: patient_user
+    try:
+        # Appointment 5 belongs to Patient 4
+        res = client.get("/api/v1/appointments/5")
+        assert res.status_code == 403
+        assert "Cannot view another patient's appointment" in res.json()["detail"]
+    finally:
+        if previous:
+            app.dependency_overrides[get_current_user] = previous
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_patient_cannot_book_for_other_patient(client):
+    """Verifies that a patient cannot book an appointment with another patient's ID (M3-1)."""
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    patient_user = UserAccount(
+        Account_ID=11,
+        Username="pat_johndoe",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Patient,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: patient_user
+    try:
+        res = client.post("/api/v1/appointments", json={
+            "patient_id": 4,  # Trying to book for patient 4 while logged in as patient 1
+            "doctor_id": 1,
+            "branch_id": 1,
+            "appointment_date": "2026-12-15",
+            "start_time": "09:00:00",
+            "duration_minutes": 15,
+            "appointment_type": "Standard",
+            "reason_for_visit": "Unauthorized booking"
+        })
+        assert res.status_code == 403
+        assert "Patients can only book appointments for themselves" in res.json()["detail"]
+    finally:
+        if previous:
+            app.dependency_overrides[get_current_user] = previous
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_patient_list_appointments_returns_only_own_appointments(client):
+    """Verifies that a patient listing appointments only receives their own records (M3-2)."""
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    patient_user = UserAccount(
+        Account_ID=11,
+        Username="pat_johndoe",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Patient,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: patient_user
+    try:
+        res = client.get("/api/v1/appointments")
+        assert res.status_code == 200
+        records = res.json()
+        assert len(records) > 0
+        for item in records:
+            assert item["Patient_ID"] == 1
+            assert item["Patient_Name"] == "John Doe"
+    finally:
+        if previous:
+            app.dependency_overrides[get_current_user] = previous
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_patient_can_cancel_own_appointment(client, cleanup_appointments):
+    """Verifies that a patient can successfully cancel their own appointment (M3-1)."""
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    patient_user = UserAccount(
+        Account_ID=11,
+        Username="pat_johndoe",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Patient,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: patient_user
+    try:
+        # Book a legitimate appointment for patient 1
+        book_res = client.post("/api/v1/appointments", json={
+            "patient_id": 1,
+            "doctor_id": 1,
+            "branch_id": 1,
+            "appointment_date": "2026-12-20",
+            "start_time": "10:00:00",
+            "duration_minutes": 20,
+            "appointment_type": "Standard",
+            "reason_for_visit": "Own appointment test"
+        })
+        assert book_res.status_code == 201
+        created_appt = book_res.json()
+        cleanup_appointments.append(created_appt["Appointment_ID"])
+
+        # Cancel own appointment
+        cancel_res = client.put(
+            f"/api/v1/appointments/{created_appt['Appointment_ID']}/cancel",
+            json={"cancellation_reason": "Patient decided to cancel"}
+        )
+        assert cancel_res.status_code == 200
+        assert cancel_res.json()["Status"] == "Cancelled"
+    finally:
+        if previous:
+            app.dependency_overrides[get_current_user] = previous
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_staff_list_appointments_scoped_to_branch(client):
+    """Verifies that Receptionist appointments listing is scoped to their branch (M3-2)."""
+    from app.api.deps import get_current_user
+    from app.schemas.user import UserAccount, SystemRoleEnum, AccountStatusEnum
+    # Nurse Chen has Account_ID=5 and is assigned to Branch 1
+    receptionist_user = UserAccount(
+        Account_ID=5,
+        Username="nurse_chen",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Receptionist,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    previous = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: receptionist_user
+    try:
+        res = client.get("/api/v1/appointments")
+        assert res.status_code == 200
+        records = res.json()
+        assert len(records) > 0
+        for item in records:
+            assert item["Branch_ID"] == 1
+    finally:
+        if previous:
+            app.dependency_overrides[get_current_user] = previous
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
 

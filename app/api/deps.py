@@ -7,7 +7,7 @@ from app.db.connection import get_db
 from app.schemas.user import UserAccount, SystemRoleEnum
 from app.schemas.user import TokenPayload
 
-__all__ = ["get_db", "get_current_user", "require_roles"]
+__all__ = ["get_db", "get_current_user", "require_roles", "get_own_patient_id", "get_staff_branch_id"]
 
 def get_current_user(db: pymysql.Connection = Depends(get_db), token: str = Depends(oauth2_scheme)) -> UserAccount:
     credentials_exception = HTTPException(
@@ -60,3 +60,15 @@ def require_roles(allowed_roles: list[SystemRoleEnum]):
             )
         return current_user
     return role_checker
+
+def get_own_patient_id(db: pymysql.Connection, user: UserAccount) -> int | None:
+    with db.cursor() as cursor:
+        cursor.execute("SELECT Patient_ID FROM Patient WHERE Account_ID = %s", (user.Account_ID,))
+        row = cursor.fetchone()
+        return row["Patient_ID"] if row else None
+
+def get_staff_branch_id(db: pymysql.Connection, user: UserAccount) -> int | None:
+    with db.cursor() as cursor:
+        cursor.execute("SELECT Branch_ID FROM Staff WHERE Account_ID = %s", (user.Account_ID,))
+        row = cursor.fetchone()
+        return row["Branch_ID"] if row else None

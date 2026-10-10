@@ -278,10 +278,11 @@ def get_appointments_by_date(
     doctor_id: Optional[int] = None,
     branch_id: Optional[int] = None,
     appointment_date: Optional[date] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    patient_id: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """
-    Retrieves appointments matching multi-criteria filters (doctor, branch, date, status).
+    Retrieves appointments matching multi-criteria filters (doctor, branch, date, status, patient).
     Orders records by Appointment_Date and Start_Time for clinic queue tracking.
     """
     sql = """
@@ -313,6 +314,10 @@ def get_appointments_by_date(
     """
     where_clauses = []
     params = []
+
+    if patient_id is not None:
+        where_clauses.append("a.Patient_ID = %s")
+        params.append(patient_id)
 
     if doctor_id is not None:
         where_clauses.append("a.Doctor_ID = %s")

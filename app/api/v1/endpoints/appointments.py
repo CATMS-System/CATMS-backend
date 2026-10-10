@@ -9,8 +9,8 @@ from typing import List, Optional
 import pymysql
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 
-from app.api.deps import get_db, require_roles
-from app.schemas.user import SystemRoleEnum
+from app.api.deps import get_db, require_roles, get_own_patient_id, get_staff_branch_id
+from app.schemas.user import SystemRoleEnum, UserAccount
 from app.schemas.appointment import (
     AppointmentCreate,
     WalkInAppointmentCreate,
@@ -42,17 +42,25 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     summary="Book a standard scheduled appointment",
     description="Validates slot availability against doctor schedule and existing bookings, then atomically creates an appointment.",
-    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient]))],
 )
 def create_appointment(
     payload: AppointmentCreate,
     conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient])),
 ) -> AppointmentResponse:
     """
     Creates a new scheduled clinic appointment.
     Returns HTTP 409 Conflict if the requested slot overlaps with an existing active booking.
     Returns HTTP 400 Bad Request if patient, doctor, or branch validation fails.
     """
+    if current_user.System_Role == SystemRoleEnum.Patient:
+        own_patient_id = get_own_patient_id(conn, current_user)
+        if not own_patient_id or payload.patient_id != own_patient_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Patients can only book appointments for themselves.",
+            )
+
     try:
         appt_type_str = payload.appointment_type.value if hasattr(payload.appointment_type, "value") else str(payload.appointment_type)
         return book_appointment_atomic(
@@ -143,7 +151,6 @@ def create_walk_in_appointment(
     response_model=List[AppointmentResponse],
     summary="List appointments with optional date, doctor, branch, and status filters",
     description="Retrieves clinic appointments matching query filters with joined patient, doctor, and branch details.",
-    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient]))],
 )
 def list_appointments(
     date: Optional[date] = Query(default=None, description="Filter by appointment date (YYYY-MM-DD)"),
@@ -151,15 +158,35 @@ def list_appointments(
     branch_id: Optional[int] = Query(default=None, description="Filter by Branch ID", ge=1),
     status: Optional[str] = Query(default=None, description="Filter by appointment status (Scheduled, Confirmed, Completed, Cancelled, No_Show)"),
     conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient])),
 ) -> List[AppointmentResponse]:
     """
     Queries appointments matching criteria, ordered by date and start time.
     """
+    if current_user.System_Role == SystemRoleEnum.Patient:
+        own_patient_id = get_own_patient_id(conn, current_user)
+        if not own_patient_id:
+            return []
+        return get_appointments_by_date(
+            conn=conn,
+            appointment_date=date,
+            doctor_id=doctor_id,
+            branch_id=branch_id,
+            status=status,
+            patient_id=own_patient_id,
+        )
+
+    effective_branch_id = branch_id
+    if current_user.System_Role in [SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor]:
+        staff_branch = get_staff_branch_id(conn, current_user)
+        if staff_branch is not None:
+            effective_branch_id = staff_branch
+
     return get_appointments_by_date(
         conn=conn,
         appointment_date=date,
         doctor_id=doctor_id,
-        branch_id=branch_id,
+        branch_id=effective_branch_id,
         status=status,
     )
 
@@ -215,11 +242,11 @@ def get_clinic_queue(
     response_model=AppointmentResponse,
     summary="Get appointment details by ID",
     description="Retrieves a single appointment record with patient, doctor, and clinic details.",
-    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient]))],
 )
 def get_appointment(
     appointment_id: int = Path(..., description="Unique Appointment ID", ge=1),
     conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient])),
 ) -> AppointmentResponse:
     """
     Retrieves full details for a single appointment.
@@ -231,6 +258,13 @@ def get_appointment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Appointment with ID {appointment_id} not found.",
         )
+    if current_user.System_Role == SystemRoleEnum.Patient:
+        own_patient_id = get_own_patient_id(conn, current_user)
+        if not own_patient_id or appt["Patient_ID"] != own_patient_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Cannot view another patient's appointment.",
+            )
     return appt
 
 
@@ -239,18 +273,32 @@ def get_appointment(
     response_model=AppointmentResponse,
     summary="Reschedule an appointment to a new date and time slot",
     description="Validates slot availability excluding current appointment, checks doctor schedule, and updates the appointment record.",
-    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Patient]))],
 )
 def reschedule_existing_appointment(
     payload: AppointmentReschedule,
     appointment_id: int = Path(..., description="Unique Appointment ID", ge=1),
     conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Patient])),
 ) -> AppointmentResponse:
     """
     Reschedules an existing scheduled/confirmed appointment to a new date and time.
     Returns HTTP 409 Conflict if target slot collides with another booking.
     Returns HTTP 400 Bad Request if the appointment cannot be rescheduled.
     """
+    if current_user.System_Role == SystemRoleEnum.Patient:
+        appt = get_appointment_by_id(conn, appointment_id=appointment_id)
+        if not appt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Appointment with ID {appointment_id} does not exist.",
+            )
+        own_patient_id = get_own_patient_id(conn, current_user)
+        if not own_patient_id or appt["Patient_ID"] != own_patient_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Cannot reschedule another patient's appointment.",
+            )
+
     try:
         return reschedule_appointment(
             conn=conn,
@@ -287,17 +335,31 @@ def reschedule_existing_appointment(
     response_model=AppointmentResponse,
     summary="Cancel an appointment with a mandatory reason",
     description="Marks an appointment as Cancelled and records an audit cancellation reason.",
-    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient]))],
 )
 def cancel_existing_appointment(
     payload: AppointmentCancel,
     appointment_id: int = Path(..., description="Unique Appointment ID", ge=1),
     conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Patient])),
 ) -> AppointmentResponse:
     """
     Cancels an active appointment with a required cancellation reason.
     Returns HTTP 400 Bad Request if already completed or cancelled.
     """
+    if current_user.System_Role == SystemRoleEnum.Patient:
+        appt = get_appointment_by_id(conn, appointment_id=appointment_id)
+        if not appt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Appointment with ID {appointment_id} does not exist.",
+            )
+        own_patient_id = get_own_patient_id(conn, current_user)
+        if not own_patient_id or appt["Patient_ID"] != own_patient_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Cannot cancel another patient's appointment.",
+            )
+
     try:
         return cancel_appointment(
             conn=conn,
