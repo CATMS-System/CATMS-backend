@@ -19,20 +19,35 @@ router = APIRouter()
     "/invoices",
 )
 def get_invoices(
+    branch_id: int | None = None,
+    patient_id: int | None = None,
     db: pymysql.Connection = Depends(get_db),
     current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Receptionist, SystemRoleEnum.Patient])),
 ):
     invoice_repository = InvoiceRepository(db)
 
-    patient_id = None
-    branch_id = None
-
     if current_user.System_Role == SystemRoleEnum.Patient:
         patient_id = get_own_patient_id(db, current_user)
         if not patient_id:
             return []
-    elif current_user.System_Role in (SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Branch_Manager):
-        branch_id = get_staff_branch_id(db, current_user)
+    elif current_user.System_Role == SystemRoleEnum.Branch_Manager:
+        manager_branch = get_staff_branch_id(db, current_user)
+        if not manager_branch:
+            raise HTTPException(
+                status_code=403,
+                detail="Branch manager has no assigned branch."
+            )
+        if branch_id is not None and branch_id != manager_branch:
+            raise HTTPException(
+                status_code=403,
+                detail="Branch managers can only view invoices for their own branch."
+            )
+        branch_id = manager_branch
+    elif current_user.System_Role in (SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor):
+        staff_branch = get_staff_branch_id(db, current_user)
+        if not staff_branch:
+            return []
+        branch_id = staff_branch
 
     return invoice_repository.get_all(patient_id=patient_id, branch_id=branch_id)
 
@@ -76,9 +91,16 @@ def get_invoice(
                 status_code=403,
                 detail="Access denied: Cannot view another patient's invoice.",
             )
-    elif current_user.System_Role in (SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor, SystemRoleEnum.Branch_Manager):
+    elif current_user.System_Role == SystemRoleEnum.Branch_Manager:
+        manager_branch_id = get_staff_branch_id(db, current_user)
+        if not manager_branch_id or manager_branch_id != invoice_branch_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: Branch managers can only view invoices for their own branch.",
+            )
+    elif current_user.System_Role in (SystemRoleEnum.Receptionist, SystemRoleEnum.Doctor):
         staff_branch_id = get_staff_branch_id(db, current_user)
-        if staff_branch_id and staff_branch_id != invoice_branch_id:
+        if not staff_branch_id or staff_branch_id != invoice_branch_id:
             raise HTTPException(
                 status_code=403,
                 detail="Access denied: Invoice belongs to a different branch.",

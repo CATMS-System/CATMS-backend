@@ -101,3 +101,99 @@ def test_nonexistent_invoice_returns_404():
         assert response.status_code == 404
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_branch_manager_can_read_own_branch_invoice():
+    """Branch Manager for Branch 1 (mgr_vance, Account_ID=6) can read Invoice 1 (Branch 1)."""
+    manager_user = UserAccount(
+        Account_ID=6,
+        Username="mgr_vance",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Branch_Manager,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: manager_user
+    try:
+        response = client.get("/api/v1/billing/invoices/1")
+        assert response.status_code == 200
+        data = response.json()
+        assert "invoice" in data
+        assert data["invoice"]["Invoice_ID"] == 1
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_branch_manager_cannot_read_other_branch_invoice():
+    """Branch Manager for Branch 1 (mgr_vance, Account_ID=6) reading Invoice 2 (Branch 2) receives 403."""
+    manager_user = UserAccount(
+        Account_ID=6,
+        Username="mgr_vance",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Branch_Manager,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: manager_user
+    try:
+        response = client.get("/api/v1/billing/invoices/2")
+        assert response.status_code == 403
+        assert "Branch managers can only view invoices for their own branch" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_branch_manager_invoice_list_scopes_to_own_branch():
+    """Branch Manager for Branch 1 listing invoices only sees invoices from Branch 1."""
+    manager_user = UserAccount(
+        Account_ID=6,
+        Username="mgr_vance",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Branch_Manager,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: manager_user
+    try:
+        response = client.get("/api/v1/billing/invoices")
+        assert response.status_code == 200
+        invoices = response.json()
+        assert isinstance(invoices, list)
+        invoice_ids = [inv["Invoice_ID"] for inv in invoices]
+        assert 1 in invoice_ids
+        assert 2 not in invoice_ids
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_branch_manager_cannot_list_other_branch_invoices():
+    """Branch Manager for Branch 1 requesting branch_id=2 invoices receives 403."""
+    manager_user = UserAccount(
+        Account_ID=6,
+        Username="mgr_vance",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Branch_Manager,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: manager_user
+    try:
+        response = client.get("/api/v1/billing/invoices?branch_id=2")
+        assert response.status_code == 403
+        assert "Branch managers can only view invoices for their own branch" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_branch_manager_without_assigned_branch_cannot_list_invoices():
+    """Branch Manager without assigned branch receives 403 when listing invoices."""
+    manager_user = UserAccount(
+        Account_ID=9999,
+        Username="unassigned_mgr",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Branch_Manager,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: manager_user
+    try:
+        response = client.get("/api/v1/billing/invoices")
+        assert response.status_code == 403
+        assert "Branch manager has no assigned branch" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
