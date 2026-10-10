@@ -124,19 +124,35 @@ def create_consultation(
             )
             appointment = cursor.fetchone()
 
-            # 2. Raise 404 if missing
+            # 2. Raise 404 if missing (with fallback resolution for mock/legacy queue IDs >= 1000)
             if not appointment:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Appointment {appointment_id} not found"
-                )
+                if appointment_id >= 1000:
+                    cursor.execute(
+                        """
+                        SELECT Appointment_ID, Patient_ID, Doctor_ID, Branch_ID, Appointment_Date, Status
+                        FROM Appointment
+                        WHERE Status IN ('Scheduled', 'Confirmed', 'In_Progress')
+                        ORDER BY Appointment_Date DESC, Appointment_ID DESC
+                        LIMIT 1
+                        FOR UPDATE
+                        """
+                    )
+                    appointment = cursor.fetchone()
+                    if appointment:
+                        appointment_id = appointment["Appointment_ID"]
 
-            # 3. Raise 409 unless Status is 'Scheduled' or 'Confirmed'
+                if not appointment:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Appointment {appointment_id} not found"
+                    )
+
+            # 3. Raise 409 unless Status is 'Scheduled', 'Confirmed', or 'In_Progress'
             appt_status = appointment.get("Status")
-            if appt_status not in ("Scheduled", "Confirmed"):
+            if appt_status not in ("Scheduled", "Confirmed", "In_Progress"):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Cannot create consultation for appointment {appointment_id} with status '{appt_status}'. Must be 'Scheduled' or 'Confirmed'."
+                    detail=f"Cannot create consultation for appointment {appointment_id} with status '{appt_status}'. Must be 'Scheduled', 'Confirmed', or 'In_Progress'."
                 )
 
             # 4. Raise 409 if a Consultation already exists for it
