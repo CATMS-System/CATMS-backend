@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     doctors,
     insurance,
     patients,
+    portal,
     reports,
     staff,
     treatments,
@@ -45,6 +46,8 @@ api_router.include_router(doctors.specialties_router, prefix="/specialties", tag
 api_router.include_router(appointments.router, prefix="/appointments", tags=["Appointments"], dependencies=[Depends(get_current_user)])
 
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
+# public on purpose, the activation code is the proof of identity
+api_router.include_router(portal.router, prefix="/portal", tags=["Portal"])
 api_router.include_router(branches.router, prefix="/branches", tags=["Branches"], dependencies=[Depends(get_current_user)])
 api_router.include_router(staff.router, prefix="/staff", tags=["Staff"], dependencies=[Depends(get_current_user)])
 api_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit Logs"], dependencies=[Depends(get_current_user)])
