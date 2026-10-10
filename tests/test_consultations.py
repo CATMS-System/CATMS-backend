@@ -663,6 +663,50 @@ def test_unknown_consultation_id_returns_404_for_all_roles():
     print("Test Passed: Unknown consultation ID returned 404 Not Found for Patient, Doctor, and Admin roles.")
 
 
+def test_mock_appointment_consultation_creation():
+    """Verifies that mock appointments (>= 1000) are cleanly auto-provisioned, completed, and generate an invoice."""
+    doctor_user = UserAccount(
+        Account_ID=2,
+        Username="dr_bennett",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Doctor,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: doctor_user
+    try:
+        # Clean up any preexisting record for appointment 1004
+        cleanup_conn = get_db_connection()
+        try:
+            with cleanup_conn.cursor() as cur:
+                cur.execute("SELECT Consultation_ID FROM Consultation WHERE Appointment_ID = 1004")
+                cons = cur.fetchone()
+                if cons:
+                    cur.execute("DELETE FROM Invoice WHERE Consultation_ID = %s", (cons[0] if isinstance(cons, tuple) else cons["Consultation_ID"],))
+                    cur.execute("DELETE FROM Prescribed_Treatment WHERE Consultation_ID = %s", (cons[0] if isinstance(cons, tuple) else cons["Consultation_ID"],))
+                    cur.execute("DELETE FROM Consultation WHERE Consultation_ID = %s", (cons[0] if isinstance(cons, tuple) else cons["Consultation_ID"],))
+                cur.execute("DELETE FROM Appointment WHERE Appointment_ID = 1004")
+            cleanup_conn.commit()
+        finally:
+            cleanup_conn.close()
+
+        payload = {
+            "appointment_id": 1004,
+            "diagnosis": "ECG interpretation review and follow-up",
+            "clinical_notes": "Patient reports stable condition.",
+            "doctor_notes": "Maintain current medication.",
+            "vitals": {"bp": "120/80", "heart_rate": 72, "temperature": 36.6, "spo2": 99, "weight": 70.0},
+            "items": [{"treatment_id": 1, "quantity": 1, "instructions": "Review 12-lead ECG"}]
+        }
+        resp = client.post("/api/v1/consultations", json=payload)
+        assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.json()}"
+        data = resp.json()
+        assert data["invoice_id"] is not None
+        assert data["consultation_id"] is not None
+        print("Test Passed: Mock appointment 1004 cleanly completed with generated invoice.")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
 if __name__ == "__main__":
     print("=" * 70)
     print("Running Consultation Module Tests (Option C: Plain PyMySQL)")

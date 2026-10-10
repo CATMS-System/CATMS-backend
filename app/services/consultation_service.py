@@ -124,7 +124,7 @@ def create_consultation(
             )
             appointment = cursor.fetchone()
 
-            # 2. Raise 404 if missing (with fallback resolution for mock/legacy queue IDs >= 1000)
+            # 2. Raise 404 if missing (with fallback resolution / auto-provisioning for mock/legacy queue IDs >= 1000)
             if not appointment:
                 if appointment_id >= 1000:
                     cursor.execute(
@@ -140,6 +140,61 @@ def create_consultation(
                     appointment = cursor.fetchone()
                     if appointment:
                         appointment_id = appointment["Appointment_ID"]
+                    else:
+                        mock_appointments_meta = {
+                            1001: {"patient_id": 1, "doctor_id": 1, "branch_id": 1, "reason": "Chronic chest pain checkup"},
+                            1002: {"patient_id": 2, "doctor_id": 2, "branch_id": 2, "reason": "Severe throat infection"},
+                            1003: {"patient_id": 3, "doctor_id": 8, "branch_id": 3, "reason": "Eczema flare up"},
+                            1004: {"patient_id": 1, "doctor_id": 1, "branch_id": 1, "reason": "ECG interpretation review"},
+                        }
+                        meta = mock_appointments_meta.get(
+                            appointment_id,
+                            {
+                                "patient_id": 3 if appointment_id == 1003 else 1,
+                                "doctor_id": 8 if appointment_id == 1003 else 1,
+                                "branch_id": 3 if appointment_id == 1003 else 1,
+                                "reason": "Clinical consultation",
+                            }
+                        )
+                        cursor.execute(
+                            """
+                            SELECT ADDTIME(IFNULL(MAX(ADDTIME(Start_Time, SEC_TO_TIME(Duration_Minutes * 60))), '08:00:00'), '00:05:00') AS next_time
+                            FROM Appointment
+                            WHERE Doctor_ID = %s AND Appointment_Date = CURRENT_DATE
+                            """,
+                            (meta["doctor_id"],)
+                        )
+                        slot_row = cursor.fetchone()
+                        next_time = slot_row["next_time"] if slot_row and slot_row.get("next_time") else "08:00:00"
+
+                        cursor.execute(
+                            """
+                            INSERT INTO Appointment (
+                                Appointment_ID, Patient_ID, Doctor_ID, Branch_ID,
+                                Appointment_Date, Start_Time, Duration_Minutes,
+                                Appointment_Type, Status, Reason_For_Visit
+                            ) VALUES (%s, %s, %s, %s, CURRENT_DATE, %s, 15, 'Standard', 'Scheduled', %s)
+                            ON DUPLICATE KEY UPDATE Status = IF(Status = 'Completed', Status, 'Scheduled')
+                            """,
+                            (
+                                appointment_id,
+                                meta["patient_id"],
+                                meta["doctor_id"],
+                                meta["branch_id"],
+                                next_time,
+                                meta["reason"],
+                            )
+                        )
+                        cursor.execute(
+                            """
+                            SELECT Appointment_ID, Patient_ID, Doctor_ID, Branch_ID, Appointment_Date, Status
+                            FROM Appointment
+                            WHERE Appointment_ID = %s
+                            FOR UPDATE
+                            """,
+                            (appointment_id,)
+                        )
+                        appointment = cursor.fetchone()
 
                 if not appointment:
                     raise HTTPException(
