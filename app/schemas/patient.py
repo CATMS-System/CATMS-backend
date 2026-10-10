@@ -293,6 +293,8 @@ class PatientCreate(StrictModel):
     postal_code: str
     emergency_contact: EmergencyContactCreate
     insurance_policy: InsurancePolicyCreate | None = None  # saved atomically
+    # reception ticks this to hand the patient an activation code at registration
+    create_portal_invite: bool = False
 
     @field_validator("nic")
     def _nic(cls, v: str) -> str:
@@ -356,6 +358,65 @@ class PatientSummaryResponse(BaseModel):
     nic: str
     contact_number: str
     registration_date: date
+
+# Portal access (online login for patients)
+class PortalInviteResponse(BaseModel):
+    """Shown to reception once. The code is not stored anywhere in readable form"""
+    patient_id: int
+    invite_type: str
+    code: str
+    expires_at: datetime
+
+
+class PortalAccessInfo(BaseModel):
+    has_account: bool = False
+    username: str | None = None
+    invite_pending: bool = False
+    invite_type: str | None = None
+    invite_expires_at: datetime | None = None
+
+
+class PortalVerifyRequest(StrictModel):
+    nic: str
+    code: str
+
+    @field_validator("nic")
+    def _nic(cls, v: str) -> str:
+        return normalize_nic(v)
+
+    @field_validator("code")
+    def _code(cls, v: str) -> str:
+        return normalize_code(v)
+
+
+class PortalActivateRequest(PortalVerifyRequest):
+    """username is only needed when activating, a password reset keeps the old one"""
+    username: str | None = None
+    password: str
+
+    @field_validator("username")
+    def _username(cls, v: str | None) -> str | None:
+        return normalize_username(v) if v else None
+
+    @field_validator("password")
+    def _password(cls, v: str) -> str:
+        return validate_password(v)
+
+    @model_validator(mode="after")
+    def _password_not_username(self):
+        if self.username and self.password.lower() == self.username:
+            raise ValueError("Password cannot be the same as the username")
+        return self
+
+
+class PortalVerifyResponse(BaseModel):
+    invite_type: str
+    username: str | None = None
+
+
+class PortalActivateResponse(BaseModel):
+    username: str
+    invite_type: str
 
 class PatientDetailResponse(BaseModel):
     """Full profile. Visit/appointment history is Member 3's domain and is intentionally not included here """
