@@ -23,12 +23,14 @@ def make_user(account_id: int, role: SystemRoleEnum, username: str = "test_user"
     )
 
 
-def test_billing_staff_can_access_reports_and_query_any_branch():
-    """Billing_Staff role can access reports across any branch or without branch filter."""
+def test_billing_staff_scopes_to_own_branch_and_cannot_query_other_branch():
+    """Billing_Staff role can access reports for their assigned branch, but receives 403 for other branches."""
     client = TestClient(app)
 
     fake_db = MagicMock()
     fake_cursor = MagicMock()
+    # Mock get_staff_branch_id: Staff query returns Branch_ID 2
+    fake_cursor.fetchone.return_value = {"Branch_ID": 2}
     fake_cursor.fetchall.return_value = []
     fake_db.cursor.return_value.__enter__.return_value = fake_cursor
 
@@ -37,17 +39,18 @@ def test_billing_staff_can_access_reports_and_query_any_branch():
         account_id=201, role=SystemRoleEnum.Billing_Staff, username="billing_officer"
     )
 
-    # 1. Branch daily summary
+    # 1. Branch daily summary for own branch 2
     res = client.get("/api/v1/reports/branch-daily-summary?report_date=2026-08-15&branch_id=2")
     assert res.status_code == 200
 
-    # 2. Outstanding balances without branch filter
+    # 2. Outstanding balances without branch filter (automatically scoped to branch 2)
     res2 = client.get("/api/v1/reports/outstanding-balances")
     assert res2.status_code == 200
 
-    # 3. Doctor revenue
-    res3 = client.get("/api/v1/reports/doctor-revenue?start_date=2026-08-01&end_date=2026-08-31")
-    assert res3.status_code == 200
+    # 3. Requesting other branch 1 receives 403
+    res3 = client.get("/api/v1/reports/branch-daily-summary?report_date=2026-08-15&branch_id=1")
+    assert res3.status_code == 403
+    assert "Billing staff can only view reports for their own branch" in res3.json()["detail"]
 
 
 def test_branch_manager_can_access_own_branch():

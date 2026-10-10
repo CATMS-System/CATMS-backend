@@ -22,19 +22,21 @@ def enforce_report_branch(
     requested_branch_id: int | None,
     db: pymysql.Connection,
 ) -> int | None:
-    if current_user.System_Role == SystemRoleEnum.Branch_Manager:
-        manager_branch_id = get_staff_branch_id(db, current_user)
-        if not manager_branch_id:
+    if current_user.System_Role in (SystemRoleEnum.Branch_Manager, SystemRoleEnum.Billing_Staff):
+        staff_branch_id = get_staff_branch_id(db, current_user)
+        role_label = "Branch managers" if current_user.System_Role == SystemRoleEnum.Branch_Manager else "Billing staff"
+        singular_label = "Branch manager" if current_user.System_Role == SystemRoleEnum.Branch_Manager else "Billing staff"
+        if not staff_branch_id:
             raise HTTPException(
                 status_code=403,
-                detail="Branch manager has no assigned branch."
+                detail=f"{singular_label} has no assigned branch."
             )
-        if requested_branch_id is not None and requested_branch_id != manager_branch_id:
+        if requested_branch_id is not None and requested_branch_id != staff_branch_id:
             raise HTTPException(
                 status_code=403,
-                detail="Branch managers can only view reports for their own branch."
+                detail=f"{role_label} can only view reports for their own branch."
             )
-        return manager_branch_id
+        return staff_branch_id
     return requested_branch_id
 
 

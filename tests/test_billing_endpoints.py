@@ -197,3 +197,81 @@ def test_branch_manager_without_assigned_branch_cannot_list_invoices():
         assert "Branch manager has no assigned branch" in response.json()["detail"]
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_billing_staff_can_read_own_branch_invoice():
+    """Billing Staff for Branch 1 (billing_patel, Account_ID=7) can read Invoice 1 (Branch 1)."""
+    billing_user = UserAccount(
+        Account_ID=7,
+        Username="billing_patel",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Billing_Staff,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: billing_user
+    try:
+        response = client.get("/api/v1/billing/invoices/1")
+        assert response.status_code == 200
+        data = response.json()
+        assert "invoice" in data
+        assert data["invoice"]["Invoice_ID"] == 1
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_billing_staff_cannot_read_other_branch_invoice():
+    """Billing Staff for Branch 1 (billing_patel, Account_ID=7) reading Invoice 2 (Branch 2) receives 403."""
+    billing_user = UserAccount(
+        Account_ID=7,
+        Username="billing_patel",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Billing_Staff,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: billing_user
+    try:
+        response = client.get("/api/v1/billing/invoices/2")
+        assert response.status_code == 403
+        assert "Billing staff can only view invoices for their own branch" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_billing_staff_invoice_list_scopes_to_own_branch():
+    """Billing Staff for Branch 1 listing invoices only sees invoices from Branch 1."""
+    billing_user = UserAccount(
+        Account_ID=7,
+        Username="billing_patel",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Billing_Staff,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: billing_user
+    try:
+        response = client.get("/api/v1/billing/invoices")
+        assert response.status_code == 200
+        invoices = response.json()
+        assert isinstance(invoices, list)
+        invoice_ids = [inv["Invoice_ID"] for inv in invoices]
+        assert 1 in invoice_ids
+        assert 2 not in invoice_ids
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_billing_staff_cannot_list_other_branch_invoices():
+    """Billing Staff for Branch 1 requesting branch_id=2 invoices receives 403."""
+    billing_user = UserAccount(
+        Account_ID=7,
+        Username="billing_patel",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Billing_Staff,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: billing_user
+    try:
+        response = client.get("/api/v1/billing/invoices?branch_id=2")
+        assert response.status_code == 403
+        assert "Billing staff can only view invoices for their own branch" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
