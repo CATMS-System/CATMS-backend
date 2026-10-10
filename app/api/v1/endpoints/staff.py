@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 import pymysql
-from typing import List, Optional
+from typing import List, Optional, Union
 from app.db.connection import get_db
 from app.schemas.organization import StaffCreate, StaffUpdate, StaffResponse
+from app.schemas.staff import StaffPublicResponse
 from app.api.deps import get_current_user, require_roles, get_staff_branch_id
 from app.schemas.user import UserAccount, SystemRoleEnum
 
 router = APIRouter()
 
-@router.get("", response_model=List[StaffResponse])
+@router.get("", response_model=List[Union[StaffResponse, StaffPublicResponse]])
 def get_staff(
     branch_id: Optional[int] = None,
     skip: int = 0, 
@@ -30,7 +31,26 @@ def get_staff(
             )
         result = cursor.fetchall()
         
-    return [StaffResponse(**row) for row in result]
+    if current_user.System_Role in (SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager):
+        return [StaffResponse(**row) for row in result]
+    return [StaffPublicResponse(**row) for row in result]
+
+@router.get("/{staff_id}", response_model=Union[StaffResponse, StaffPublicResponse])
+def get_staff_by_id(
+    staff_id: int,
+    db: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user)
+):
+    """Retrieve staff member by ID."""
+    with db.cursor() as cursor:
+        cursor.execute("SELECT * FROM Staff WHERE Staff_ID = %s", (staff_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Staff not found")
+
+    if current_user.System_Role in (SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager):
+        return StaffResponse(**row)
+    return StaffPublicResponse(**row)
 
 @router.post("", response_model=StaffResponse)
 def create_staff(
