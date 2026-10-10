@@ -6,20 +6,29 @@ class InvoiceRepository:
     def __init__(self, db: pymysql.Connection):
         self.db = db
 
-    def get_all(self):
-        with self.db.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT i.Invoice_ID, i.Consultation_ID, i.Invoice_Date,
-                       i.Billed_Consultation_Fee, i.Invoice_Status,
-                       b.Branch_ID, b.Branch_Name
-                FROM vw_Invoice_Summary i
-                JOIN Appointment a ON i.Appointment_ID = a.Appointment_ID
-                JOIN Branch b ON a.Branch_ID = b.Branch_ID
-                ORDER BY i.Invoice_ID
-                """
-            )
+    def get_all(self, patient_id=None, branch_id=None):
+        query = """
+            SELECT i.Invoice_ID, i.Consultation_ID, i.Invoice_Date,
+                   i.Billed_Consultation_Fee, i.Invoice_Status,
+                   b.Branch_ID, b.Branch_Name
+            FROM vw_Invoice_Summary i
+            JOIN Appointment a ON i.Appointment_ID = a.Appointment_ID
+            JOIN Branch b ON a.Branch_ID = b.Branch_ID
+        """
+        conditions = []
+        params = []
+        if patient_id is not None:
+            conditions.append("a.Patient_ID = %s")
+            params.append(patient_id)
+        if branch_id is not None:
+            conditions.append("b.Branch_ID = %s")
+            params.append(branch_id)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY i.Invoice_ID"
 
+        with self.db.cursor() as cursor:
+            cursor.execute(query, tuple(params))
             return cursor.fetchall()
 
     def get_summary(self, invoice_id: int):
