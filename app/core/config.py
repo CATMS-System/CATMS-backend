@@ -1,4 +1,5 @@
 import os
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,9 +21,16 @@ class Settings(BaseSettings):
     DB_SSL_MODE: str = ""
 
     # Security settings
-    SECRET_KEY: str = "supersecretkey_change_in_production"
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("SECRET_KEY must be set in the environment and cannot be empty")
+        return v
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),
