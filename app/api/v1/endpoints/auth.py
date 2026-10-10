@@ -3,8 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 import pymysql
 from app.db.connection import get_db
-from app.schemas.user import UserAccount, Token, UserResponse, SystemRoleEnum
-from app.core.security import verify_password, create_access_token
+from app.schemas.user import UserAccount, Token, UserResponse, SystemRoleEnum, ChangePasswordRequest
+from app.core.security import verify_password, create_access_token, get_password_hash
+from app.services.common import write_audit
 from app.api.deps import get_current_user
 from app.core.config import settings
 
@@ -74,3 +75,34 @@ def read_users_me(
         pass
 
     return UserResponse(**user_data)
+
+@router.post("/change-password")
+def change_password(
+    data: ChangePasswordRequest,
+    current_user: UserAccount = Depends(get_current_user),
+    db: pymysql.Connection = Depends(get_db),
+):
+    """Allow authenticated user to change their password"""
+    if not verify_password(data.current_password, current_user.Password_Hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters long")
+    if data.current_password == data.new_password:
+        raise HTTPException(status_code=400, detail="New password cannot be the same as current password")
+
+    new_hash = get_password_hash(data.new_password)
+    with db.cursor() as cursor:
+        cursor.execute(
+            "UPDATE User_Account SET Password_Hash = %s WHERE Account_ID = %s",
+            (new_hash, current_user.Account_ID),
+        )
+        write_audit(
+            cursor,
+            account_id=current_user.Account_ID,
+            table_name="User_Account",
+            record_id=current_user.Account_ID,
+            action="UPDATE",
+            new_value={"password_reset": True},
+        )
+    db.commit()
+    return {"message": "Password changed successfully"}

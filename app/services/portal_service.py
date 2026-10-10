@@ -53,12 +53,15 @@ def get_portal_access(cursor, patient_id: int) -> dict:
         (patient_id,),
     )
     invite = cursor.fetchone()
+    username = row.get("Username") or row.get("username")
+    invite_type = (invite.get("Invite_Type") or invite.get("invite_type")) if invite else None
+    expires_at = (invite.get("Expires_At") or invite.get("expires_at")) if invite else None
     return {
-        "has_account": row.get("Username") is not None,
-        "username": row.get("Username"),
+        "has_account": username is not None,
+        "username": username,
         "invite_pending": invite is not None,
-        "invite_type": invite["Invite_Type"] if invite else None,
-        "invite_expires_at": invite["Expires_At"] if invite else None,
+        "invite_type": invite_type,
+        "invite_expires_at": expires_at,
     }
 
 
