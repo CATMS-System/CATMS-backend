@@ -14,6 +14,7 @@ from pydantic import (
     Field,
     computed_field,
     field_validator,
+    model_validator,
 )
 
 
@@ -102,6 +103,42 @@ def validate_policy_year(v: date, field_name: str) -> date:
         raise ValueError(f"{field_name} year looks like a typo (before {MIN_POLICY_YEAR})")
     if v.year > MAX_POLICY_YEAR:
         raise ValueError(f"{field_name} year looks like a typo (after {MAX_POLICY_YEAR})")
+    return v
+
+# Portal login rules (the activate page on the frontend repeats these)
+USERNAME_PATTERN = re.compile(r"^[a-z0-9_.-]{4,50}$")
+# staff style names and the prefixes the seed data uses, patients cannot take them
+RESERVED_USERNAME_STARTS = ("admin", "root", "support", "system", "staff", "doctor", "dr_",
+                            "mgr_", "manager", "recept", "billing", "nurse", "pat_", "null")
+CODE_PATTERN = re.compile(r"^[A-HJKMNP-Z2-9]{10}$")
+
+
+def normalize_username(v: str) -> str:
+    """Usernames are lower case so Nimal and nimal cannot both exist"""
+    v = v.strip().lower()
+    if not USERNAME_PATTERN.match(v):
+        raise ValueError("Username must be 4 to 50 characters: letters, digits, dot, dash or underscore")
+    if v.startswith(RESERVED_USERNAME_STARTS):
+        raise ValueError("This username is not available")
+    return v
+
+
+def validate_password(v: str) -> str:
+    """bcrypt only reads the first 72 bytes, so longer passwords are refused"""
+    if len(v.encode("utf-8")) > 72:
+        raise ValueError("Password can be at most 72 bytes long")
+    if len(v) < 8:
+        raise ValueError("Password must be at least 8 characters")
+    if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
+        raise ValueError("Password must contain at least one letter and one digit")
+    return v
+
+
+def normalize_code(v: str) -> str:
+    """Accepts the slip as printed (ABCDE-FGHJK), with or without dash and spaces"""
+    v = re.sub(r"[\s\-]", "", v).upper()
+    if not CODE_PATTERN.match(v):
+        raise ValueError("Activation code must be 10 characters, like ABCDE-FGHJK")
     return v
 
 # Emergency Contact
