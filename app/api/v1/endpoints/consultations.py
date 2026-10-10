@@ -9,8 +9,15 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 import pymysql
 
-from app.api.deps import get_db, require_roles
-from app.schemas.user import SystemRoleEnum
+from app.api.deps import (
+    get_db,
+    require_roles,
+    get_current_user,
+    get_own_patient_id,
+    get_own_doctor_id,
+    doctor_has_treated_patient,
+)
+from app.schemas.user import SystemRoleEnum, UserAccount
 from app.schemas.consultation import (
     ConsultationCreate,
     ConsultationCreateResponse,
@@ -102,13 +109,32 @@ def record_consultation(
 )
 def read_patient_consultation_history(
     patient_id: int,
-    conn: pymysql.Connection = Depends(get_db)
+    conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
 ) -> List[ConsultationHistoryItem]:
     """
     Retrieve chronological consultation history for a patient, ordered newest first.
     Returns a list of ConsultationHistoryItem summaries with prescribed item counts.
     Raises 404 if the patient is not found.
+    Raises 403 if patient attempts to read another patient's history,
+    or if doctor attempts to read history of a patient they have not treated.
     """
+    if isinstance(current_user, UserAccount):
+        if current_user.System_Role == SystemRoleEnum.Patient:
+            own_patient_id = get_own_patient_id(conn, current_user)
+            if not own_patient_id or own_patient_id != patient_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Cannot view another patient's consultation history.",
+                )
+        elif current_user.System_Role == SystemRoleEnum.Doctor:
+            own_doctor_id = get_own_doctor_id(conn, current_user)
+            if not own_doctor_id or not doctor_has_treated_patient(conn, own_doctor_id, patient_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Doctor has not treated this patient.",
+                )
+
     history = get_patient_consultation_history(conn, patient_id)
     return [ConsultationHistoryItem(**item) for item in history]
 
@@ -121,13 +147,54 @@ def read_patient_consultation_history(
 )
 def read_consultation(
     consultation_id: int,
-    conn: pymysql.Connection = Depends(get_db)
+    conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
 ) -> ConsultationOut:
     """
     Retrieve full consultation details by ID via raw SQL joining Consultation,
     Appointment, Patient, Doctor/Staff, Invoice, and Prescribed_Treatment/Treatment_Catalogue.
     Returns ConsultationOut with items and line totals.
     Raises 404 if consultation does not exist.
+    Raises 403 if patient attempts to read another patient's consultation,
+    or if doctor attempts to read consultation for a patient they have not treated.
     """
+    # Look up the consultation first; 404 if missing (check before any permission check)
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT a.Patient_ID
+            FROM Consultation c
+            JOIN Appointment a ON c.Appointment_ID = a.Appointment_ID
+            WHERE c.Consultation_ID = %s
+            """,
+            (consultation_id,)
+        )
+        row = cursor.fetchone()
+
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Consultation {consultation_id} not found",
+        )
+
+    consultation_patient_id = row["Patient_ID"]
+
+    if isinstance(current_user, UserAccount):
+        if current_user.System_Role == SystemRoleEnum.Patient:
+            own_patient_id = get_own_patient_id(conn, current_user)
+            if not own_patient_id or own_patient_id != consultation_patient_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Cannot view another patient's consultation details.",
+                )
+        elif current_user.System_Role == SystemRoleEnum.Doctor:
+            own_doctor_id = get_own_doctor_id(conn, current_user)
+            if not own_doctor_id or not doctor_has_treated_patient(conn, own_doctor_id, consultation_patient_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Doctor has not treated this patient.",
+                )
+
     data = get_consultation_by_id(conn, consultation_id)
     return ConsultationOut(**data)
+

@@ -7,7 +7,15 @@ from app.db.connection import get_db
 from app.schemas.user import UserAccount, SystemRoleEnum
 from app.schemas.user import TokenPayload
 
-__all__ = ["get_db", "get_current_user", "require_roles", "get_own_patient_id", "get_staff_branch_id"]
+__all__ = [
+    "get_db",
+    "get_current_user",
+    "require_roles",
+    "get_own_patient_id",
+    "get_staff_branch_id",
+    "get_own_doctor_id",
+    "doctor_has_treated_patient",
+]
 
 def get_current_user(db: pymysql.Connection = Depends(get_db), token: str = Depends(oauth2_scheme)) -> UserAccount:
     credentials_exception = HTTPException(
@@ -72,3 +80,30 @@ def get_staff_branch_id(db: pymysql.Connection, user: UserAccount) -> int | None
         cursor.execute("SELECT Branch_ID FROM Staff WHERE Account_ID = %s", (user.Account_ID,))
         row = cursor.fetchone()
         return row["Branch_ID"] if row else None
+
+def get_own_doctor_id(db: pymysql.Connection, user: UserAccount) -> int | None:
+    with db.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT d.Doctor_ID 
+            FROM Doctor d 
+            JOIN Staff s ON d.Doctor_ID = s.Staff_ID 
+            WHERE s.Account_ID = %s
+            """,
+            (user.Account_ID,)
+        )
+        row = cursor.fetchone()
+        return row["Doctor_ID"] if row else None
+
+def doctor_has_treated_patient(db: pymysql.Connection, doctor_id: int, patient_id: int) -> bool:
+    with db.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT 1 FROM Appointment 
+            WHERE Doctor_ID = %s AND Patient_ID = %s 
+            LIMIT 1
+            """,
+            (doctor_id, patient_id)
+        )
+        return cursor.fetchone() is not None
+

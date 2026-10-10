@@ -41,7 +41,7 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def auth_override():
     mock_doctor = UserAccount(
-        Account_ID=4,
+        Account_ID=2,
         Username="dr_bennett",
         Password_Hash="",
         System_Role=SystemRoleEnum.Doctor,
@@ -460,7 +460,14 @@ def test_get_consultation_by_id_seeded_1():
     """Verifies GET /api/v1/consultations/1 for seeded consultation 1."""
     conn = get_db_connection()
     try:
-        model: ConsultationOut = read_consultation(1, conn=conn)
+        doc = UserAccount(
+            Account_ID=2,
+            Username="dr_bennett",
+            Password_Hash="",
+            System_Role=SystemRoleEnum.Doctor,
+            Account_Status=AccountStatusEnum.Active,
+        )
+        model: ConsultationOut = read_consultation(1, conn=conn, current_user=doc)
         assert model.consultation_id == 1
         assert model.appointment_id == 1
         assert model.patient_name == "John Doe"
@@ -491,12 +498,169 @@ def test_get_consultation_by_id_seeded_1():
 
 
 def test_get_patient_consultation_history_not_found():
-    """Verifies GET /api/v1/consultations/patient/{patient_id} returns 404 for nonexistent patient."""
-    response = client.get("/api/v1/consultations/patient/999999")
-    status_code, body = response.status_code, response.json()
-    assert status_code == 404, f"Expected 404, got {status_code}: {body}"
-    assert "not found" in body.get("detail", "").lower()
-    print("Test Passed: GET /api/v1/consultations/patient/999999 returned 404 Not Found.")
+    """Verifies GET /api/v1/consultations/patient/{patient_id} returns 404 for nonexistent patient (Admin role)."""
+    admin_user = UserAccount(
+        Account_ID=1,
+        Username="admin_alana",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Admin,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin_user
+    try:
+        response = client.get("/api/v1/consultations/patient/999999")
+        status_code, body = response.status_code, response.json()
+        assert status_code == 404, f"Expected 404, got {status_code}: {body}"
+        assert "not found" in body.get("detail", "").lower()
+        print("Test Passed: GET /api/v1/consultations/patient/999999 returned 404 Not Found.")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_patient_reads_own_consultation_history_and_detail():
+    """Verifies that a patient can read their own consultation history and detail (200 OK)."""
+    # Patient 1 (pat_johndoe, Account_ID=11, Patient_ID=1)
+    patient_user = UserAccount(
+        Account_ID=11,
+        Username="pat_johndoe",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Patient,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: patient_user
+    try:
+        # History for Patient 1
+        resp_history = client.get("/api/v1/consultations/patient/1")
+        assert resp_history.status_code == 200, f"Expected 200, got {resp_history.status_code}: {resp_history.json()}"
+        assert isinstance(resp_history.json(), list)
+
+        # Detail for Consultation 1 (belongs to Patient 1)
+        resp_detail = client.get("/api/v1/consultations/1")
+        assert resp_detail.status_code == 200, f"Expected 200, got {resp_detail.status_code}: {resp_detail.json()}"
+        assert resp_detail.json()["consultation_id"] == 1
+        assert resp_detail.json()["patient_name"] == "John Doe"
+        print("Test Passed: Patient successfully read own consultation history and detail (200 OK).")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_patient_reads_another_patients_consultation_returns_403():
+    """Verifies that a patient attempting to read another patient's consultation history or detail returns 403 Forbidden."""
+    # Patient 1 (pat_johndoe, Account_ID=11, Patient_ID=1)
+    patient_user = UserAccount(
+        Account_ID=11,
+        Username="pat_johndoe",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Patient,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: patient_user
+    try:
+        # History for Patient 2
+        resp_history = client.get("/api/v1/consultations/patient/2")
+        assert resp_history.status_code == 403, f"Expected 403, got {resp_history.status_code}: {resp_history.json()}"
+        assert "access denied" in resp_history.json().get("detail", "").lower()
+
+        # Consultation 2 (belongs to Patient 2)
+        resp_detail = client.get("/api/v1/consultations/2")
+        assert resp_detail.status_code == 403, f"Expected 403, got {resp_detail.status_code}: {resp_detail.json()}"
+        assert "access denied" in resp_detail.json().get("detail", "").lower()
+        print("Test Passed: Patient reading another patient's consultation history or detail returned 403 Forbidden.")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_doctor_reads_treated_patient_consultation():
+    """Verifies that a doctor can read consultation history and detail for a patient they treated (200 OK)."""
+    # Doctor 1 (dr_bennett, Account_ID=2, Doctor_ID=1 treated Patient 1)
+    doctor_user = UserAccount(
+        Account_ID=2,
+        Username="dr_bennett",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Doctor,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: doctor_user
+    try:
+        # History for Patient 1
+        resp_history = client.get("/api/v1/consultations/patient/1")
+        assert resp_history.status_code == 200, f"Expected 200, got {resp_history.status_code}: {resp_history.json()}"
+
+        # Detail for Consultation 1
+        resp_detail = client.get("/api/v1/consultations/1")
+        assert resp_detail.status_code == 200, f"Expected 200, got {resp_detail.status_code}: {resp_detail.json()}"
+        assert resp_detail.json()["consultation_id"] == 1
+        print("Test Passed: Doctor read treated patient's consultation history and detail (200 OK).")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_doctor_reads_untreated_patient_consultation_returns_403():
+    """Verifies that a doctor attempting to read consultations for an untreated patient returns 403 Forbidden."""
+    # Doctor 1 (dr_bennett, Account_ID=2, Doctor_ID=1 never treated Patient 2)
+    doctor_user = UserAccount(
+        Account_ID=2,
+        Username="dr_bennett",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Doctor,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: doctor_user
+    try:
+        # History for Patient 2
+        resp_history = client.get("/api/v1/consultations/patient/2")
+        assert resp_history.status_code == 403, f"Expected 403, got {resp_history.status_code}: {resp_history.json()}"
+        assert "access denied" in resp_history.json().get("detail", "").lower()
+
+        # Consultation 2 (belongs to Patient 2)
+        resp_detail = client.get("/api/v1/consultations/2")
+        assert resp_detail.status_code == 403, f"Expected 403, got {resp_detail.status_code}: {resp_detail.json()}"
+        assert "access denied" in resp_detail.json().get("detail", "").lower()
+        print("Test Passed: Doctor reading untreated patient's consultation returned 403 Forbidden.")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_admin_reads_any_consultation():
+    """Verifies that Admin can read any patient's consultation history and detail without restriction (200 OK)."""
+    admin_user = UserAccount(
+        Account_ID=1,
+        Username="admin_alana",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Admin,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin_user
+    try:
+        # History for Patient 2
+        resp_history = client.get("/api/v1/consultations/patient/2")
+        assert resp_history.status_code == 200, f"Expected 200, got {resp_history.status_code}: {resp_history.json()}"
+
+        # Detail for Consultation 2
+        resp_detail = client.get("/api/v1/consultations/2")
+        assert resp_detail.status_code == 200, f"Expected 200, got {resp_detail.status_code}: {resp_detail.json()}"
+        assert resp_detail.json()["consultation_id"] == 2
+        print("Test Passed: Admin read patient's consultation history and detail (200 OK).")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_unknown_consultation_id_returns_404_for_all_roles():
+    """Verifies that querying an unknown consultation ID returns 404 before any permission check (for Patient, Doctor, Admin)."""
+    roles_to_test = [
+        UserAccount(Account_ID=11, Username="pat_johndoe", Password_Hash="", System_Role=SystemRoleEnum.Patient, Account_Status=AccountStatusEnum.Active),
+        UserAccount(Account_ID=2, Username="dr_bennett", Password_Hash="", System_Role=SystemRoleEnum.Doctor, Account_Status=AccountStatusEnum.Active),
+        UserAccount(Account_ID=1, Username="admin_alana", Password_Hash="", System_Role=SystemRoleEnum.Admin, Account_Status=AccountStatusEnum.Active),
+    ]
+    for user in roles_to_test:
+        app.dependency_overrides[get_current_user] = lambda u=user: u
+        try:
+            resp = client.get("/api/v1/consultations/999999")
+            assert resp.status_code == 404, f"Expected 404 for role {user.System_Role}, got {resp.status_code}: {resp.json()}"
+            assert "not found" in resp.json().get("detail", "").lower()
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+    print("Test Passed: Unknown consultation ID returned 404 Not Found for Patient, Doctor, and Admin roles.")
 
 
 if __name__ == "__main__":
@@ -513,6 +677,12 @@ if __name__ == "__main__":
     test_unknown_consultation_id_returns_404()
     test_get_consultation_by_id_seeded_1()
     test_get_patient_consultation_history_not_found()
+    test_patient_reads_own_consultation_history_and_detail()
+    test_patient_reads_another_patients_consultation_returns_403()
+    test_doctor_reads_treated_patient_consultation()
+    test_doctor_reads_untreated_patient_consultation_returns_403()
+    test_admin_reads_any_consultation()
+    test_unknown_consultation_id_returns_404_for_all_roles()
     print("=" * 70)
     print("All consultation tests passed successfully!")
     print("=" * 70)
