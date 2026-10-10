@@ -83,11 +83,11 @@ def list_policies(patient_id: int = Path(..., ge=1), conn: pymysql.Connection = 
     "/{patient_id}/policies",
     response_model=InsurancePolicyResponse,
     status_code=201,
-    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Receptionist, SystemRoleEnum.Billing_Staff]))],
 )
 def attach_policy(
     data: InsurancePolicyCreate,
     patient_id: int = Path(..., ge=1),
     conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Receptionist, SystemRoleEnum.Billing_Staff])),
 ):
-    return insurance_service.attach_policy(conn, patient_id, data)
+    return insurance_service.attach_policy(conn, patient_id, data, account_id=current_user.Account_ID)

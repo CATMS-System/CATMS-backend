@@ -5,7 +5,7 @@ import pymysql
 from fastapi import HTTPException
 
 from app.schemas.patient import InsurancePolicyCreate, InsuranceProviderCreate
-from app.services.common import lower_keys, lower_rows, transaction
+from app.services.common import lower_keys, lower_rows, transaction, write_audit
 
 PROVIDER_COLS = (
     "Provider_ID, Provider_Name, Contact_Number, Email, "
@@ -37,7 +37,7 @@ def list_providers(conn: pymysql.Connection) -> list[dict]:
         cursor.execute(f"SELECT {PROVIDER_COLS} FROM Insurance_Provider ORDER BY Provider_Name")
         return lower_rows(cursor.fetchall())
 
-def create_provider(conn: pymysql.Connection, data: InsuranceProviderCreate) -> dict:
+def create_provider(conn: pymysql.Connection, data: InsuranceProviderCreate, account_id: int | None = None) -> dict:
     with transaction(conn), conn.cursor() as cursor:
         # name and email must both be new
         cursor.execute(
@@ -62,6 +62,21 @@ def create_provider(conn: pymysql.Connection, data: InsuranceProviderCreate) -> 
             data.state_province,
             data.postal_code,),)
         provider_id = cursor.lastrowid
+
+        if account_id is not None:
+            cursor.execute(
+                f"SELECT {PROVIDER_COLS} FROM Insurance_Provider WHERE Provider_ID = %s",
+                (provider_id,),
+            )
+            new_val = lower_keys(cursor.fetchone())
+            write_audit(
+                cursor,
+                account_id=account_id,
+                table_name="Insurance_Provider",
+                record_id=provider_id,
+                action="INSERT",
+                new_value=new_val,
+            )
     return get_provider(conn, provider_id)
 
 # all policies of a patient, or only the ones that can be used today
@@ -116,12 +131,26 @@ def get_policy(conn: pymysql.Connection, policy_id: int) -> dict:
         raise HTTPException(404, "Policy not found")
     return row
 
-def attach_policy(conn: pymysql.Connection, patient_id: int, data: InsurancePolicyCreate) -> dict:
+def attach_policy(
+    conn: pymysql.Connection, patient_id: int, data: InsurancePolicyCreate, account_id: int | None = None
+) -> dict:
     with transaction(conn), conn.cursor() as cursor:
         cursor.execute("SELECT Patient_ID FROM Patient WHERE Patient_ID = %s", (patient_id,))
         if not cursor.fetchone():
             raise HTTPException(404, "Patient not found")
         policy_id = insert_policy(cursor, patient_id, data)
+
+        if account_id is not None:
+            cursor.execute(POLICY_SELECT + " WHERE ip.Policy_ID = %s", (policy_id,))
+            new_val = lower_keys(cursor.fetchone())
+            write_audit(
+                cursor,
+                account_id=account_id,
+                table_name="Insurance_Policy",
+                record_id=policy_id,
+                action="INSERT",
+                new_value=new_val,
+            )
     return get_policy(conn, policy_id)
 
 def list_patient_policies(conn: pymysql.Connection, patient_id: int) -> list[dict]:

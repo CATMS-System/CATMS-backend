@@ -3,7 +3,7 @@ import pymysql
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_db, require_roles
-from app.schemas.user import SystemRoleEnum
+from app.schemas.user import SystemRoleEnum, UserAccount
 from app.schemas.patient import InsuranceProviderCreate, InsuranceProviderResponse
 from app.services import insurance_service
 
@@ -22,7 +22,10 @@ def list_providers(conn: pymysql.Connection = Depends(get_db)):
     "/providers",
     response_model=InsuranceProviderResponse,
     status_code=201,
-    dependencies=[Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Billing_Staff]))],
 )
-def create_provider(data: InsuranceProviderCreate, conn: pymysql.Connection = Depends(get_db)):
-    return insurance_service.create_provider(conn, data)
+def create_provider(
+    data: InsuranceProviderCreate,
+    conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager, SystemRoleEnum.Billing_Staff])),
+):
+    return insurance_service.create_provider(conn, data, account_id=current_user.Account_ID)
