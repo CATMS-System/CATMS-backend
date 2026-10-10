@@ -438,6 +438,9 @@ class PatientDetailResponse(BaseModel):
     # These reuse the response classes defined above, so those classes must stay above this one in the file
     emergency_contacts: list[EmergencyContactResponse] = []
     active_policies: list[InsurancePolicyResponse] = []
+    portal_access: PortalAccessInfo = PortalAccessInfo()
+    # only filled in the response of a registration that asked for an activation code
+    portal_invite: PortalInviteResponse | None = None
 
 # Pagination
 T = TypeVar("T")
