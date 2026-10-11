@@ -85,11 +85,6 @@ def create_appointment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create appointment: {str(e)}",
-        )
 
 
 @router.post(
@@ -138,11 +133,6 @@ def create_walk_in_appointment(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create walk-in appointment: {str(e)}",
         )
 
 
@@ -327,11 +317,6 @@ def reschedule_existing_appointment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to reschedule appointment: {str(e)}",
-        )
 
 
 @router.put(
@@ -379,10 +364,5 @@ def cancel_existing_appointment(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to cancel appointment: {str(e)}",
         )
 
