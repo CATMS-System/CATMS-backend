@@ -1,0 +1,76 @@
+from pydantic import BaseModel, ConfigDict, EmailStr
+from typing import Optional, List
+import enum
+
+class EmploymentStatusEnum(str, enum.Enum):
+    Active = "Active"
+    On_Leave = "On_Leave"
+    Terminated = "Terminated"
+# --- Branch Schemas ---
+class BranchBase(BaseModel):
+    Branch_Name: str
+    Street_Address: str
+    City: str
+    State_Province: str
+    Postal_Code: str
+    Contact_Number: str
+    Email: EmailStr
+    Manager_Staff_ID: Optional[int] = None  # create a Branch first without a manager, and assign the manager later.
+
+class BranchCreate(BranchBase):
+    pass
+
+class BranchUpdate(BaseModel):
+    Branch_Name: Optional[str] = None
+    Street_Address: Optional[str] = None
+    City: Optional[str] = None
+    State_Province: Optional[str] = None
+    Postal_Code: Optional[str] = None
+    Contact_Number: Optional[str] = None
+    Email: Optional[EmailStr] = None
+    Manager_Staff_ID: Optional[int] = None
+
+class BranchResponse(BranchBase):
+    Branch_ID: int
+    model_config = ConfigDict(from_attributes=True)
+
+from decimal import Decimal
+from app.schemas.user import SystemRoleEnum
+
+# --- Staff Schemas ---
+class StaffBase(BaseModel):
+    First_Name: str
+    Last_Name: str
+    Job_Title: str
+    Contact_Number: str
+    Email: EmailStr
+    Employment_Status: EmploymentStatusEnum = EmploymentStatusEnum.Active
+    Branch_ID: int
+
+class StaffCreate(StaffBase):
+    Branch_ID: Optional[int] = None
+    Account_ID: Optional[int] = None
+    Username: Optional[str] = None
+    Password: Optional[str] = None
+    System_Role: Optional[SystemRoleEnum] = None
+    License_Number: Optional[str] = None
+    Standard_Consultation_Fee: Optional[Decimal] = None
+    Specialty_IDs: Optional[List[int]] = None
+
+class StaffUpdate(BaseModel):
+    First_Name: Optional[str] = None
+    Last_Name: Optional[str] = None
+    Job_Title: Optional[str] = None
+    Contact_Number: Optional[str] = None
+    Email: Optional[EmailStr] = None
+    Employment_Status: Optional[EmploymentStatusEnum] = None
+    Branch_ID: Optional[int] = None
+
+class StaffResponse(StaffBase):
+    Staff_ID: int
+    Account_ID: int
+    System_Role: Optional[SystemRoleEnum] = None
+    License_Number: Optional[str] = None
+    Standard_Consultation_Fee: Optional[Decimal] = None
+    Specialty_IDs: Optional[List[int]] = None
+    model_config = ConfigDict(from_attributes=True)
