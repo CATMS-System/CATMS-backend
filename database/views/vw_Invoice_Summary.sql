@@ -8,6 +8,8 @@ SELECT
     p.Contact_Number AS Patient_Phone,
     a.Doctor_ID,
     CONCAT(s.First_Name, ' ', s.Last_Name) AS Doctor_Name,
+    a.Branch_ID,
+    b.Branch_Name,
     inv.Invoice_Date,
     inv.Billed_Consultation_Fee,
     COALESCE(treatments.Total_Treatments, 0.00) AS Total_Treatments_Fee,
@@ -21,6 +23,7 @@ SELECT
 FROM Invoice inv
 JOIN Consultation c ON inv.Consultation_ID = c.Consultation_ID
 JOIN Appointment a ON c.Appointment_ID = a.Appointment_ID
+JOIN Branch b ON a.Branch_ID = b.Branch_ID
 JOIN Patient p ON a.Patient_ID = p.Patient_ID
 JOIN Doctor d ON a.Doctor_ID = d.Doctor_ID
 JOIN Staff s ON d.Doctor_ID = s.Staff_ID

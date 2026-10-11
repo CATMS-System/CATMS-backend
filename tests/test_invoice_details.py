@@ -23,13 +23,43 @@ def db():
 def test_invoice_list_branches_follow_appointment(db):
     rows = InvoiceRepository(db).get_all()
     with db.cursor() as cursor:
-        cursor.execute("""SELECT i.*, b.Branch_ID, b.Branch_Name FROM Invoice i
-            JOIN Consultation c ON c.Consultation_ID = i.Consultation_ID
-            JOIN Appointment a ON a.Appointment_ID = c.Appointment_ID
-            JOIN Branch b ON b.Branch_ID = a.Branch_ID ORDER BY i.Invoice_ID""")
+        cursor.execute("SELECT * FROM vw_Invoice_Summary ORDER BY Invoice_ID")
         assert rows == cursor.fetchall()
     assert rows, "This integration test requires seeded invoices"
     assert all(row["Branch_ID"] and row["Branch_Name"] for row in rows)
+
+
+def test_invoice_list_total_matches_detail_total_for_invoice_with_treatments(db):
+    """
+    Confirm that the list endpoint query returns Invoice_Total matching
+    the detail endpoint's total_bill (consultation fee + treatment line totals).
+    Specifically verifies invoices with treatments such as invoice #72.
+    """
+    invoices = InvoiceRepository(db).get_all()
+    saw_invoice_with_treatments = False
+    service = BillingService(db)
+
+    # Check invoice #72 specifically if present
+    inv_72 = next((i for i in invoices if i["Invoice_ID"] == 72), None)
+    if inv_72:
+        details_72 = service.get_invoice_details(72)
+        assert inv_72["Billed_Consultation_Fee"] == Decimal("2000.00")
+        assert inv_72["Total_Treatments_Fee"] == Decimal("6500.00")
+        assert inv_72["Invoice_Total"] == Decimal("8500.00")
+        assert inv_72["Invoice_Total"] == details_72["total_bill"]
+
+    for inv in invoices:
+        details = service.get_invoice_details(inv["Invoice_ID"])
+        assert inv["Invoice_Total"] == details["total_bill"]
+        assert inv["Billed_Consultation_Fee"] == details["consultation_fee"]
+        assert inv["Total_Treatments_Fee"] == details["total_treatment_charges"]
+        assert inv["Invoice_Total"] == inv["Billed_Consultation_Fee"] + inv["Total_Treatments_Fee"]
+        if details["treatments"]:
+            saw_invoice_with_treatments = True
+            assert inv["Total_Treatments_Fee"] > Decimal("0")
+            assert inv["Invoice_Total"] > inv["Billed_Consultation_Fee"]
+
+    assert saw_invoice_with_treatments, "Integration test requires at least one invoice with treatments"
 
 
 def test_invoice_details_billed_treatments_and_summary(db):
