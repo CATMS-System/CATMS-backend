@@ -162,6 +162,7 @@ def split_sql_statements(sql: str) -> list[str]:
 def all_database_routine_files() -> list[Path]:
     return [
         BASE_DIR / "database/functions/fn_calculate_patient_balance.sql",
+        BASE_DIR / "database/functions/fn_policy_coverage.sql",
         BASE_DIR / "database/views/vw_Invoice_Summary.sql",
         BASE_DIR / "database/views/vw_audit_log_readable.sql",
         BASE_DIR / "database/views/vw_staff_directory.sql",
@@ -173,6 +174,7 @@ def all_database_routine_files() -> list[Path]:
         BASE_DIR / "database/triggers/trg_after_staff_update.sql",
         BASE_DIR / "database/triggers/trg_check_appointment_overlap.sql",
         BASE_DIR / "database/triggers/trg_audit_core_entities.sql",
+        BASE_DIR / "database/triggers/trg_insurance_claim_rules.sql",
     ]
 
 
