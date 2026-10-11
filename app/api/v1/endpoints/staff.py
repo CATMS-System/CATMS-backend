@@ -19,14 +19,20 @@ def get_staff(
 ):
     """Retrieve staff members (Option C: PyMySQL)."""
     with db.cursor() as cursor:
+        base_query = """
+            SELECT s.*, u.System_Role, d.Doctor_ID, d.License_Number, d.Standard_Consultation_Fee
+            FROM Staff s
+            LEFT JOIN User_Account u ON s.Account_ID = u.Account_ID
+            LEFT JOIN Doctor d ON s.Staff_ID = d.Doctor_ID
+        """
         if branch_id:
             cursor.execute(
-                "SELECT * FROM Staff WHERE Branch_ID = %s LIMIT %s OFFSET %s",
+                base_query + " WHERE s.Branch_ID = %s LIMIT %s OFFSET %s",
                 (branch_id, limit, skip)
             )
         else:
             cursor.execute(
-                "SELECT * FROM Staff LIMIT %s OFFSET %s",
+                base_query + " LIMIT %s OFFSET %s",
                 (limit, skip)
             )
         result = cursor.fetchall()
@@ -43,7 +49,16 @@ def get_staff_by_id(
 ):
     """Retrieve staff member by ID."""
     with db.cursor() as cursor:
-        cursor.execute("SELECT * FROM Staff WHERE Staff_ID = %s", (staff_id,))
+        cursor.execute(
+            """
+            SELECT s.*, u.System_Role, d.Doctor_ID, d.License_Number, d.Standard_Consultation_Fee
+            FROM Staff s
+            LEFT JOIN User_Account u ON s.Account_ID = u.Account_ID
+            LEFT JOIN Doctor d ON s.Staff_ID = d.Doctor_ID
+            WHERE s.Staff_ID = %s
+            """,
+            (staff_id,)
+        )
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Staff not found")
