@@ -15,6 +15,30 @@ from app.services.billing_service import BillingService
 router = APIRouter()
 
 
+def check_invoice_branch(db, current_user, invoice_id):
+    """Billing staff can only change invoices of their own branch."""
+    if current_user.System_Role != SystemRoleEnum.Billing_Staff:
+        return
+    staff_branch_id = get_staff_branch_id(db, current_user)
+    with db.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT a.Branch_ID
+            FROM Invoice i
+            JOIN Consultation c ON i.Consultation_ID = c.Consultation_ID
+            JOIN Appointment a ON c.Appointment_ID = a.Appointment_ID
+            WHERE i.Invoice_ID = %s
+            """,
+            (invoice_id,)
+        )
+        row = cursor.fetchone()
+        if row and row["Branch_ID"] != staff_branch_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Billing staff can only change invoices for their own branch."
+            )
+
+
 @router.get(
     "/invoices",
 )
@@ -114,13 +138,14 @@ def get_invoice(
 
 @router.post(
     "/invoices/{invoice_id}/payments",
-    dependencies=[Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin]))],
 )
 def record_payment(
     invoice_id: int,
     payment_data: PaymentCreate,
-    db: pymysql.Connection = Depends(get_db)
+    db: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin])),
 ):
+    check_invoice_branch(db, current_user, invoice_id)
     billing_service = BillingService(db)
 
     try:
@@ -142,13 +167,14 @@ def record_payment(
 
 @router.post(
     "/invoices/{invoice_id}/claims",
-    dependencies=[Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin]))],
 )
 def submit_insurance_claim(
     invoice_id: int,
     claim_data: ClaimCreate,
-    db: pymysql.Connection = Depends(get_db)
+    db: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin])),
 ):
+    check_invoice_branch(db, current_user, invoice_id)
     billing_service = BillingService(db)
 
     try:
@@ -169,13 +195,18 @@ def submit_insurance_claim(
 
 @router.patch(
     "/claims/{claim_id}/status",
-    dependencies=[Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin]))],
 )
 def update_claim_status(
     claim_id: int,
     status_data: ClaimStatusUpdate,
-    db: pymysql.Connection = Depends(get_db)
+    db: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Billing_Staff, SystemRoleEnum.Admin])),
 ):
+    with db.cursor() as cursor:
+        cursor.execute("SELECT Invoice_ID FROM Insurance_Claim WHERE Claim_ID = %s", (claim_id,))
+        claim_row = cursor.fetchone()
+        if claim_row:
+            check_invoice_branch(db, current_user, claim_row["Invoice_ID"])
     billing_service = BillingService(db)
 
     try:
