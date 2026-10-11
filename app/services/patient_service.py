@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from app.core.security import get_password_hash
 from app.schemas.patient import PatientCreate, PatientUpdate
-from app.services import insurance_service, portal_service
+from app.services import insurance_service
 from app.services.common import (
     escape_like,
     lower_keys,
@@ -68,7 +68,6 @@ def get_patient_detail(conn: pymysql.Connection, patient_id: int) -> dict:
         patient["active_policies"] = insurance_service.get_policies(
             cursor, patient_id, only_active=True
         )
-        patient["portal_access"] = portal_service.get_portal_access(cursor, patient_id)
     return patient
 
 def register_patient(
@@ -137,11 +136,6 @@ def register_patient(
         if data.insurance_policy is not None:
             insurance_service.insert_policy(cursor, patient_id, data.insurance_policy)
 
-        # optional activation code for the online portal, same transaction
-        portal_invite = None
-        if data.create_portal_invite:
-            portal_invite = portal_service.issue_invite(cursor, patient_id, created_by=account_id)
-
         # audit only when we know who did it
         if account_id is not None:
             write_audit(
@@ -152,9 +146,7 @@ def register_patient(
                 action="INSERT",
                 new_value=get_patient_row(cursor, patient_id),
             )
-    patient = get_patient_detail(conn, patient_id)
-    patient["portal_invite"] = portal_invite
-    return patient
+    return get_patient_detail(conn, patient_id)
 
 # a stored number can be +94771234567 or 0771234567, so search both
 def get_phone_formats(number: str):
