@@ -105,42 +105,6 @@ def validate_policy_year(v: date, field_name: str) -> date:
         raise ValueError(f"{field_name} year looks like a typo (after {MAX_POLICY_YEAR})")
     return v
 
-# Portal login rules (the activate page on the frontend repeats these)
-USERNAME_PATTERN = re.compile(r"^[a-z0-9_.-]{4,50}$")
-# staff style names and the prefixes the seed data uses, patients cannot take them
-RESERVED_USERNAME_STARTS = ("admin", "root", "support", "system", "staff", "doctor", "dr_",
-                            "mgr_", "manager", "recept", "billing", "nurse", "pat_", "null")
-CODE_PATTERN = re.compile(r"^[A-HJKMNP-Z2-9]{10}$")
-
-
-def normalize_username(v: str) -> str:
-    """Usernames are lower case so Nimal and nimal cannot both exist"""
-    v = v.strip().lower()
-    if not USERNAME_PATTERN.match(v):
-        raise ValueError("Username must be 4 to 50 characters: letters, digits, dot, dash or underscore")
-    if v.startswith(RESERVED_USERNAME_STARTS):
-        raise ValueError("This username is not available")
-    return v
-
-
-def validate_password(v: str) -> str:
-    """bcrypt only reads the first 72 bytes, so longer passwords are refused"""
-    if len(v.encode("utf-8")) > 72:
-        raise ValueError("Password can be at most 72 bytes long")
-    if len(v) < 8:
-        raise ValueError("Password must be at least 8 characters")
-    if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
-        raise ValueError("Password must contain at least one letter and one digit")
-    return v
-
-
-def normalize_code(v: str) -> str:
-    """Accepts the slip as printed (ABCDE-FGHJK), with or without dash and spaces"""
-    v = re.sub(r"[\s\-]", "", v).upper()
-    if not CODE_PATTERN.match(v):
-        raise ValueError("Activation code must be 10 characters, like ABCDE-FGHJK")
-    return v
-
 # Emergency Contact
 class EmergencyContactCreate(StrictModel):
     first_name: str = Field(..., min_length=1, max_length=50)
@@ -293,9 +257,7 @@ class PatientCreate(StrictModel):
     postal_code: str
     emergency_contact: EmergencyContactCreate
     insurance_policy: InsurancePolicyCreate | None = None  # saved atomically
-    # reception ticks this to hand the patient an activation code at registration
-    create_portal_invite: bool = False
-
+    
     @field_validator("nic")
     def _nic(cls, v: str) -> str:
         return normalize_nic(v)
@@ -359,65 +321,6 @@ class PatientSummaryResponse(BaseModel):
     contact_number: str
     registration_date: date
 
-# Portal access (online login for patients)
-class PortalInviteResponse(BaseModel):
-    """Shown to reception once. The code is not stored anywhere in readable form"""
-    patient_id: int
-    invite_type: str
-    code: str
-    expires_at: datetime
-
-
-class PortalAccessInfo(BaseModel):
-    has_account: bool = False
-    username: str | None = None
-    invite_pending: bool = False
-    invite_type: str | None = None
-    invite_expires_at: datetime | None = None
-
-
-class PortalVerifyRequest(StrictModel):
-    nic: str
-    code: str
-
-    @field_validator("nic")
-    def _nic(cls, v: str) -> str:
-        return normalize_nic(v)
-
-    @field_validator("code")
-    def _code(cls, v: str) -> str:
-        return normalize_code(v)
-
-
-class PortalActivateRequest(PortalVerifyRequest):
-    """username is only needed when activating, a password reset keeps the old one"""
-    username: str | None = None
-    password: str
-
-    @field_validator("username")
-    def _username(cls, v: str | None) -> str | None:
-        return normalize_username(v) if v else None
-
-    @field_validator("password")
-    def _password(cls, v: str) -> str:
-        return validate_password(v)
-
-    @model_validator(mode="after")
-    def _password_not_username(self):
-        if self.username and self.password.lower() == self.username:
-            raise ValueError("Password cannot be the same as the username")
-        return self
-
-
-class PortalVerifyResponse(BaseModel):
-    invite_type: str
-    username: str | None = None
-
-
-class PortalActivateResponse(BaseModel):
-    username: str
-    invite_type: str
-
 class PatientDetailResponse(BaseModel):
     """Full profile. Visit/appointment history is Member 3's domain and is intentionally not included here """
     patient_id: int
@@ -438,9 +341,6 @@ class PatientDetailResponse(BaseModel):
     # These reuse the response classes defined above, so those classes must stay above this one in the file
     emergency_contacts: list[EmergencyContactResponse] = []
     active_policies: list[InsurancePolicyResponse] = []
-    portal_access: PortalAccessInfo = PortalAccessInfo()
-    # only filled in the response of a registration that asked for an activation code
-    portal_invite: PortalInviteResponse | None = None
 
 # Pagination
 T = TypeVar("T")
