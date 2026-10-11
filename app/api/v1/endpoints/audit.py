@@ -16,16 +16,16 @@ def get_audit_logs(
     db: pymysql.Connection = Depends(get_db),
     current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin]))
 ):
-    """Retrieve audit logs (Option C: PyMySQL)."""
+    """Retrieve audit logs with the username and branch name (Option C: PyMySQL)."""
     with db.cursor() as cursor:
         if table_name:
             cursor.execute(
-                "SELECT * FROM Audit_Log WHERE Table_Name = %s ORDER BY Timestamp DESC LIMIT %s OFFSET %s",
+                "SELECT * FROM vw_audit_log_readable WHERE Table_Name = %s ORDER BY Timestamp DESC LIMIT %s OFFSET %s",
                 (table_name, limit, skip)
             )
         else:
             cursor.execute(
-                "SELECT * FROM Audit_Log ORDER BY Timestamp DESC LIMIT %s OFFSET %s",
+                "SELECT * FROM vw_audit_log_readable ORDER BY Timestamp DESC LIMIT %s OFFSET %s",
                 (limit, skip)
             )
         result = cursor.fetchall()
