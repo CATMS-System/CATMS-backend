@@ -32,7 +32,7 @@ class AppointmentCreate(BaseModel):
     doctor_id: int = Field(..., gt=0, description="Target Doctor ID")
     branch_id: int = Field(..., gt=0, description="Practicing Clinic Branch ID")
     appointment_date: date = Field(..., description="Date of appointment (YYYY-MM-DD)")
-    start_time: str = Field(..., description="Start time in HH:MM:SS format")
+    start_time: str = Field(..., pattern=r"^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$", description="Start time in HH:MM:SS format")
     duration_minutes: int = Field(default=15, gt=0, le=120, description="Visit duration in minutes (e.g. 15, 30, 45)")
     appointment_type: AppointmentType = Field(default=AppointmentType.STANDARD, description="Category of appointment")
     reason_for_visit: str = Field(..., min_length=2, max_length=255, description="Primary clinical visit reason")
@@ -50,7 +50,7 @@ class WalkInAppointmentCreate(BaseModel):
     duration_minutes: int = Field(default=15, gt=0, le=60, description="Estimated consultation minutes")
     triage_urgency: Optional[str] = Field(default="Normal", description="Urgency level (e.g. Normal, High, Critical)")
     appointment_date: Optional[date] = Field(default=None, description="Optional override date; defaults to today")
-    start_time: Optional[str] = Field(default=None, description="Optional override start time (HH:MM:SS); defaults to current time")
+    start_time: Optional[str] = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$", description="Optional override start time (HH:MM:SS); defaults to current time")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -58,7 +58,7 @@ class WalkInAppointmentCreate(BaseModel):
 class AppointmentReschedule(BaseModel):
     """Payload to reschedule an existing appointment to a new date and time slot."""
     new_date: date = Field(..., description="New target appointment date")
-    new_start_time: str = Field(..., description="New start time in HH:MM:SS format")
+    new_start_time: str = Field(..., pattern=r"^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$", description="New start time in HH:MM:SS format")
     duration_minutes: Optional[int] = Field(default=None, gt=0, le=120, description="Optional updated visit duration")
     reschedule_reason: Optional[str] = Field(default=None, max_length=255, description="Clinical or patient reason for change")
 
