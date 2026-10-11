@@ -20,6 +20,24 @@ services:
       retries: 10
       start_period: 10s
 
+  db-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: catms-db-init
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=${MYSQL_ROOT_PASSWORD:-${DB_PASSWORD:-root}}
+      - DB_NAME=CatMS
+      - DB_USE_SSL=false
+    command: ["python", "sql/init_if_empty.py"]
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
   backend:
     build:
       context: .
@@ -41,6 +59,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
 
   frontend:
     build:
