@@ -15,6 +15,8 @@ from app.services.appointment_service import (
     AppointmentConflictError,
 )
 
+pytestmark = pytest.mark.usefixtures("open_schedule_for_doctor_1")
+
 
 
 @pytest.fixture(scope="module")
@@ -73,7 +75,7 @@ def test_case_1_standard_appointment_booking_service(db_conn, cleanup_records):
     Verifies book_appointment_atomic creates a standard appointment record
     with atomic commit, correct initial status 'Scheduled', and joined relations.
     """
-    test_date = date(2026, 12, 1)
+    test_date = date(2026, 11, 30)  # a Monday, matching schedule 1
     test_time = "10:00:00"
 
     appt = book_appointment_atomic(
