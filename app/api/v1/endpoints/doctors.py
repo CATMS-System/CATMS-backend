@@ -176,11 +176,13 @@ def get_available_slots(
     ),
     branch_id: Optional[int] = Query(default=None, description="Optional branch ID filter", ge=1),
     schedule_id: Optional[int] = Query(default=None, description="Optional schedule ID filter", ge=1),
+    include_booked: bool = Query(default=False, description="When true, returns all shift slots including booked slots with is_booked=True"),
     conn: pymysql.Connection = Depends(get_db),
 ) -> List[AvailableSlotResponse]:
     """
     Computes available appointment slots for a doctor on a given date.
-    Excludes any slot that overlaps with an existing Scheduled, Confirmed, or Completed booking.
+    Excludes any slot that overlaps with an existing Scheduled, Confirmed, or Completed booking,
+    unless include_booked=True is specified.
     Raises 404 NOT FOUND if the doctor does not exist.
     """
     try:
@@ -191,6 +193,7 @@ def get_available_slots(
             slot_duration_minutes=duration_minutes,
             branch_id=branch_id,
             schedule_id=schedule_id,
+            include_booked=include_booked,
         )
     except DoctorNotFoundError as e:
         raise HTTPException(

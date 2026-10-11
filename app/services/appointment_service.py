@@ -407,7 +407,8 @@ def get_doctor_available_slots(
     appointment_date: Union[date, str],
     slot_duration_minutes: int = 30,
     branch_id: Optional[int] = None,
-    schedule_id: Optional[int] = None
+    schedule_id: Optional[int] = None,
+    include_booked: bool = False
 ) -> List[Dict[str, Any]]:
     """
     Computes available booking time slots for a doctor on a specific date.
@@ -532,7 +533,21 @@ def get_doctor_available_slots(
                     "Branch_ID": sch["Branch_ID"],
                     "Branch_Name": sch["Branch_Name"],
                     "Schedule_ID": sch["Schedule_ID"],
-                    "Date": appointment_date
+                    "Date": appointment_date,
+                    "Is_Booked": False,
+                    "Status": "Available"
+                })
+            elif include_booked:
+                available_slots.append({
+                    "Start_Time": slot_start_time.strftime("%H:%M:%S"),
+                    "End_Time": slot_end_time.strftime("%H:%M:%S"),
+                    "Duration_Minutes": slot_duration_minutes,
+                    "Branch_ID": sch["Branch_ID"],
+                    "Branch_Name": sch["Branch_Name"],
+                    "Schedule_ID": sch["Schedule_ID"],
+                    "Date": appointment_date,
+                    "Is_Booked": True,
+                    "Status": "Booked"
                 })
 
             curr_dt += timedelta(minutes=slot_duration_minutes)

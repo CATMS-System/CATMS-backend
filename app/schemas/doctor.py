@@ -127,5 +127,7 @@ class AvailableSlotResponse(BaseModel):
     branch_name: Optional[str] = Field(default=None, alias="Branch_Name", description="Clinic branch name")
     schedule_id: Optional[int] = Field(default=None, alias="Schedule_ID", description="Associated schedule shift ID")
     slot_date: Optional[date] = Field(default=None, alias="Date", description="Target appointment date")
+    is_booked: bool = Field(default=False, alias="Is_Booked", description="Whether this slot is already occupied/booked")
+    status: str = Field(default="Available", alias="Status", description="Slot status ('Available' or 'Booked')")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)

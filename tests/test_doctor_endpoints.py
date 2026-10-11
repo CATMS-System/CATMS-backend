@@ -184,3 +184,28 @@ def test_get_doctor_available_slots_not_found(client):
     response = client.get("/api/v1/doctors/999999/available-slots?date=2026-08-23")
     assert response.status_code == 404
     assert "detail" in response.json()
+
+
+def test_get_doctor_slots_with_include_booked(client):
+    """
+    Verifies GET /api/v1/doctors/{id}/available-slots?include_booked=true returns all slots
+    with is_booked=True on occupied slots (e.g. 09:00:00 on 2026-08-23).
+    """
+    response = client.get("/api/v1/doctors/1/available-slots?date=2026-08-23&duration_minutes=30&include_booked=true")
+    assert response.status_code == 200
+    slots = response.json()
+    assert isinstance(slots, list)
+    assert len(slots) > 0
+
+    # Confirm occupied slot 09:00:00 IS returned and marked as Is_Booked=True
+    slot_0900 = next((s for s in slots if s["Start_Time"] == "09:00:00"), None)
+    assert slot_0900 is not None, "Slot 09:00:00 must be present when include_booked=true"
+    assert slot_0900["Is_Booked"] is True
+    assert slot_0900["Status"] == "Booked"
+
+    # Confirm open slot 09:30:00 is marked Is_Booked=False
+    slot_0930 = next((s for s in slots if s["Start_Time"] == "09:30:00"), None)
+    assert slot_0930 is not None
+    assert slot_0930["Is_Booked"] is False
+    assert slot_0930["Status"] == "Available"
+
