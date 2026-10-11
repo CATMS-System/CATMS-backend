@@ -156,6 +156,47 @@ def book_appointment_atomic(
             if not cursor.fetchone():
                 raise AppointmentValidationError(f"Doctor schedule with ID {schedule_id} does not exist.")
 
+        # Appointments cannot be booked for a past date
+        if isinstance(appointment_date, str):
+            appointment_date = date.fromisoformat(appointment_date)
+        if appointment_date < date.today():
+            raise AppointmentValidationError("Appointments cannot be booked for a past date.")
+
+        # The doctor must be working (not on leave, resigned or terminated)
+        cursor.execute("SELECT Employment_Status FROM Staff WHERE Staff_ID = %s", (doctor_id,))
+        staff_row = cursor.fetchone()
+        if not staff_row or staff_row["Employment_Status"] != "Active":
+            raise AppointmentValidationError("This doctor is not available for bookings.")
+
+        # Scheduled visits must fall inside one of the doctor's shifts at this branch
+        if appointment_type not in ("Walk_In", "Emergency"):
+            end_time = compute_end_time(start_time, duration_minutes)
+            cursor.execute(
+                """
+                SELECT Schedule_ID
+                FROM Doctor_Schedule
+                WHERE Doctor_ID = %s
+                AND Branch_ID = %s
+                AND Day_Of_Week = %s
+                AND Availability_Status IN ('Active', 'On_Call')
+                AND Start_Time <= %s
+                AND End_Time >= %s
+                AND (%s IS NULL OR Schedule_ID = %s)
+                LIMIT 1
+                """,
+                (
+                    doctor_id, branch_id, appointment_date.strftime("%A"),
+                    str(start_time), end_time.strftime("%H:%M:%S"),
+                    schedule_id, schedule_id,
+                )
+            )
+            schedule_row = cursor.fetchone()
+            if not schedule_row:
+                raise AppointmentValidationError(
+                    "The doctor has no shift at this branch for that day and time."
+                )
+            schedule_id = schedule_row["Schedule_ID"]
+
     # 3. Collision check
     check_doctor_appointment_overlap(
         conn=conn,
