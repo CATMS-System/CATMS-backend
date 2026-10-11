@@ -275,3 +275,47 @@ def test_billing_staff_cannot_list_other_branch_invoices():
         assert "Billing staff can only view invoices for their own branch" in response.json()["detail"]
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_admin_invoice_list_filters_by_branch_id():
+    """Admin can list all invoices across branches or filter specifically by branch_id."""
+    admin_user = UserAccount(
+        Account_ID=1,
+        Username="admin_user",
+        Password_Hash="",
+        System_Role=SystemRoleEnum.Admin,
+        Account_Status=AccountStatusEnum.Active,
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin_user
+    try:
+        # All branches (unfiltered)
+        res_all = client.get("/api/v1/billing/invoices")
+        assert res_all.status_code == 200
+        all_invoices = res_all.json()
+        assert len(all_invoices) >= 4
+
+        # Branch 1 (Colombo Main)
+        res_b1 = client.get("/api/v1/billing/invoices?branch_id=1")
+        assert res_b1.status_code == 200
+        b1_invoices = res_b1.json()
+        assert all(inv["Branch_ID"] == 1 for inv in b1_invoices)
+        assert any(inv["Invoice_ID"] == 1 for inv in b1_invoices)
+        assert not any(inv["Invoice_ID"] == 2 for inv in b1_invoices)
+
+        # Branch 2 (Kandy)
+        res_b2 = client.get("/api/v1/billing/invoices?branch_id=2")
+        assert res_b2.status_code == 200
+        b2_invoices = res_b2.json()
+        assert all(inv["Branch_ID"] == 2 for inv in b2_invoices)
+        assert any(inv["Invoice_ID"] == 2 for inv in b2_invoices)
+        assert not any(inv["Invoice_ID"] == 1 for inv in b2_invoices)
+
+        # Branch 3 (Galle)
+        res_b3 = client.get("/api/v1/billing/invoices?branch_id=3")
+        assert res_b3.status_code == 200
+        b3_invoices = res_b3.json()
+        assert all(inv["Branch_ID"] == 3 for inv in b3_invoices)
+        assert any(inv["Invoice_ID"] == 3 for inv in b3_invoices)
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
