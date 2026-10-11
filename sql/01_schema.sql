@@ -305,45 +305,6 @@ CREATE TABLE Emergency_Contact (
         ON DELETE CASCADE
 );
 
--- one row per activation or password reset code handed to a patient by reception
--- the code itself is never stored, only its hash
-CREATE TABLE Patient_Portal_Invite (
-    Invite_ID INT PRIMARY KEY AUTO_INCREMENT,
-
-    Patient_ID INT NOT NULL,
-
-    Invite_Type ENUM(
-        'Activate',
-        'Reset'
-    ) NOT NULL,
-
-    Code_Hash CHAR(64) NOT NULL,
-
-    Created_By INT NULL,
-    Created_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    Expires_At DATETIME NOT NULL,
-
-    Failed_Attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
-
-    Used_At DATETIME NULL,
-    Revoked_At DATETIME NULL,
-
-    CONSTRAINT chk_invite_dates
-        CHECK (Expires_At > Created_At),
-
-    CONSTRAINT fk_invite_patient
-        FOREIGN KEY (Patient_ID)
-        REFERENCES Patient(Patient_ID)
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_invite_created_by
-        FOREIGN KEY (Created_By)
-        REFERENCES User_Account(Account_ID)
-        ON DELETE SET NULL,
-
-    INDEX idx_invite_patient_open (Patient_ID, Used_At, Revoked_At)
-);
-
 CREATE TABLE Insurance_Provider (
     Provider_ID INT PRIMARY KEY AUTO_INCREMENT,
 
