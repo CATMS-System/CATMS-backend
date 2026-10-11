@@ -329,7 +329,10 @@ def update_schedule_scoped(
     conn: pymysql.Connection = Depends(get_db),
     current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager])),
 ) -> DoctorScheduleResponse:
-    existing = get_schedule_by_id(conn, schedule_id)
+    try:
+        existing = get_schedule_by_id(conn, schedule_id)
+    except ScheduleNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     if existing["Doctor_ID"] != doctor_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule does not belong to specified doctor")
     return update_schedule(
