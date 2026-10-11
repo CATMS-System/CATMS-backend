@@ -9,7 +9,7 @@ from app.db.connection import get_db_connection
 def test_patient_registration_login_and_password_change_flow():
     """
     End-to-End Test for:
-    1. Registering a new patient auto-creates their User_Account with 'pat_<nic>' and 'Password123!'.
+    1. Registering a new patient auto-creates their User_Account with 'pat_<nic>' and a random first password.
     2. Logging in with the newly generated credentials succeeds and /me resolves Patient_ID.
     3. Changing password enforces validation (wrong current password, short password, same password).
     4. Successful password change invalidates old password and allows login with new password.
@@ -62,6 +62,8 @@ def test_patient_registration_login_and_password_change_flow():
     assert reg_response.status_code == 201, reg_response.text
     patient_data = reg_response.json()
     patient_id = patient_data["patient_id"]
+    first_password = patient_data["temporary_password"]
+    assert first_password and first_password != "Password123!"
 
     # Remove dependency override to test real unmocked authentication
     app.dependency_overrides.pop(get_current_user, None)
@@ -70,7 +72,7 @@ def test_patient_registration_login_and_password_change_flow():
         # 2. Login as the newly created patient using default password
         login_response = client.post(
             "/api/v1/auth/login",
-            data={"username": clean_username, "password": "Password123!"},
+            data={"username": clean_username, "password": first_password},
         )
         assert login_response.status_code == 200, login_response.text
         tokens = login_response.json()
@@ -97,7 +99,7 @@ def test_patient_registration_login_and_password_change_flow():
         # 5. Try changing password with short password (< 6 chars) -> 400
         fail_short = client.post(
             "/api/v1/auth/change-password",
-            json={"current_password": "Password123!", "new_password": "123"},
+            json={"current_password": first_password, "new_password": "123"},
             headers=headers,
         )
         assert fail_short.status_code == 400
@@ -106,7 +108,7 @@ def test_patient_registration_login_and_password_change_flow():
         # 6. Try changing password with same password -> 400
         fail_same = client.post(
             "/api/v1/auth/change-password",
-            json={"current_password": "Password123!", "new_password": "Password123!"},
+            json={"current_password": first_password, "new_password": first_password},
             headers=headers,
         )
         assert fail_same.status_code == 400
@@ -115,7 +117,7 @@ def test_patient_registration_login_and_password_change_flow():
         # 7. Successfully change password
         success_change = client.post(
             "/api/v1/auth/change-password",
-            json={"current_password": "Password123!", "new_password": "NewSecretPass456!"},
+            json={"current_password": first_password, "new_password": "NewSecretPass456!"},
             headers=headers,
         )
         assert success_change.status_code == 200
@@ -124,7 +126,7 @@ def test_patient_registration_login_and_password_change_flow():
         # 8. Verify old password no longer works
         fail_login = client.post(
             "/api/v1/auth/login",
-            data={"username": clean_username, "password": "Password123!"},
+            data={"username": clean_username, "password": first_password},
         )
         assert fail_login.status_code == 400
         assert "Incorrect username or password" in fail_login.json()["detail"]
