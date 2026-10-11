@@ -286,6 +286,12 @@ class BillingService:
 
             return updated_claim
 
+        except pymysql.MySQLError as exc:
+            self.db.rollback()
+            # claim rules in the database raise MySQL error 1644
+            if exc.args and exc.args[0] == 1644:
+                raise ValueError(exc.args[1]) from exc
+            raise
         except Exception:
             self.db.rollback()
             raise
@@ -377,6 +383,12 @@ class BillingService:
 
             return claim
 
+        except pymysql.MySQLError as exc:
+            self.db.rollback()
+            # claim rules in the database raise MySQL error 1644
+            if exc.args and exc.args[0] == 1644:
+                raise ValueError(exc.args[1]) from exc
+            raise
         except Exception:
             self.db.rollback()
             raise
