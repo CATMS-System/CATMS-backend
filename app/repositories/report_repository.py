@@ -21,6 +21,13 @@ class ReportRepository:
 
                 SUM(
                     CASE
+                        WHEN a.Status IN ('Scheduled', 'Confirmed', 'In_Progress') THEN 1
+                        ELSE 0
+                    END
+                ) AS Scheduled_Appointments,
+
+                SUM(
+                    CASE
                         WHEN a.Status = 'Completed' THEN 1
                         ELSE 0
                     END
@@ -38,7 +45,14 @@ class ReportRepository:
                         WHEN a.Status = 'No_Show' THEN 1
                         ELSE 0
                     END
-                ) AS No_Show_Appointments
+                ) AS No_Show_Appointments,
+
+                SUM(
+                    CASE
+                        WHEN a.Appointment_Type = 'Walk_In' THEN 1
+                        ELSE 0
+                    END
+                ) AS Walk_In_Appointments
 
             FROM Appointment a
 
