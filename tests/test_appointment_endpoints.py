@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.db.connection import get_db_connection
 
+pytestmark = pytest.mark.usefixtures("open_schedule_for_doctor_1")
+
 
 @pytest.fixture(scope="module")
 def client():
