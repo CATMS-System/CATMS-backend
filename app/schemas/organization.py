@@ -5,7 +5,6 @@ import enum
 class EmploymentStatusEnum(str, enum.Enum):
     Active = "Active"
     On_Leave = "On_Leave"
-    Resigned = "Resigned"
     Terminated = "Terminated"
 # --- Branch Schemas ---
 class BranchBase(BaseModel):
