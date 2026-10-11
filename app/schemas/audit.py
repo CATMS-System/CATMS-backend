@@ -12,6 +12,9 @@ class AuditLogResponse(BaseModel):
     Audit_ID: int
     Account_ID: int
     Branch_ID: Optional[int] = None
+    # names joined in by vw_audit_log_readable
+    Performed_By: Optional[str] = None
+    Affected_Branch: Optional[str] = None
     Table_Name: str
     Record_ID: str
     Action_Type: ActionTypeEnum
