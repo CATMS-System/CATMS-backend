@@ -340,6 +340,8 @@ class PatientDetailResponse(BaseModel):
     # These reuse the response classes defined above, so those classes must stay above this one in the file
     emergency_contacts: list[EmergencyContactResponse] = []
     active_policies: list[InsurancePolicyResponse] = []
+    # only set in the response to registration, the patient's first login password
+    temporary_password: str | None = None
 
 # Pagination
 T = TypeVar("T")
