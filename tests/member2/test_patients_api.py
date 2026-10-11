@@ -18,7 +18,7 @@ from tests.member2.helpers import (
 )
 
 
-def test_register_patient(client, make_patient):
+def test_register_patient(client, make_patient, db):
     patient = make_patient()
     assert patient["first_name"] == "Testy"
     assert patient["email"] == "testy.person@example.com"
@@ -26,7 +26,10 @@ def test_register_patient(client, make_patient):
     assert patient["emergency_contacts"][0]["relationship_to_patient"] == "Sister"
     assert patient["active_policies"] == []
     assert patient["updated_at"]
-    assert patient["registration_date"] == date.today().isoformat()
+    # compare with the database's date, it runs on Sri Lanka time (+05:30)
+    with db.cursor() as cursor:
+        cursor.execute("SELECT CURRENT_DATE AS today")
+        assert patient["registration_date"] == cursor.fetchone()["today"].isoformat()
 
 
 def test_register_duplicate_nic_returns_409(client, make_patient):
