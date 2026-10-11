@@ -1,5 +1,6 @@
 # patient logic, raw sql with pymysql
 import re
+import secrets
 
 import pymysql
 from fastapi import HTTPException
@@ -85,10 +86,13 @@ def register_patient(
         username = f"pat_{clean_nic}"
         cursor.execute("SELECT Account_ID FROM User_Account WHERE Username = %s", (username,))
         existing_acc = cursor.fetchone()
+        temporary_password = None
         if existing_acc:
             patient_account_id = existing_acc.get("Account_ID") or existing_acc.get("account_id")
         else:
-            default_password_hash = get_password_hash("Password123!")
+            # random first password, shown once to reception to hand to the patient
+            temporary_password = secrets.token_urlsafe(8)
+            default_password_hash = get_password_hash(temporary_password)
             cursor.execute(
                 "INSERT INTO User_Account (Username, Password_Hash, System_Role, Account_Status) "
                 "VALUES (%s, %s, 'Patient', 'Active')",
@@ -146,7 +150,9 @@ def register_patient(
                 action="INSERT",
                 new_value=get_patient_row(cursor, patient_id),
             )
-    return get_patient_detail(conn, patient_id)
+    patient = get_patient_detail(conn, patient_id)
+    patient["temporary_password"] = temporary_password
+    return patient
 
 # a stored number can be +94771234567 or 0771234567, so search both
 def get_phone_formats(number: str):
