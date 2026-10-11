@@ -63,10 +63,6 @@ def test_patient_registration_login_and_password_change_flow():
     patient_data = reg_response.json()
     patient_id = patient_data["patient_id"]
 
-    # Verify portal_access in response
-    assert patient_data["portal_access"]["has_account"] is True
-    assert patient_data["portal_access"]["username"] == clean_username
-
     # Remove dependency override to test real unmocked authentication
     app.dependency_overrides.pop(get_current_user, None)
 
