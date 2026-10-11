@@ -9,10 +9,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DB_HOST=mysql \
     DB_PORT=3306 \
     DB_USER=root \
-    DB_PASSWORD=root \
     DB_NAME=CatMS \
-    DB_USE_SSL=false \
-    SECRET_KEY=careflow-secret-key-for-dev-jwt-tokens-2026
+    DB_USE_SSL=false
+# DB_PASSWORD and SECRET_KEY are not baked into the image; docker-compose.full.yml passes them in
 
 # Set work directory
 WORKDIR /app
