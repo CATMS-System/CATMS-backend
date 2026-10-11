@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 import pymysql
 from typing import List, Optional, Union
 from app.db.connection import get_db
@@ -67,13 +67,34 @@ def get_staff_by_id(
         return StaffResponse(**row)
     return StaffPublicResponse(**row)
 
-@router.post("", response_model=StaffResponse)
+@router.post("", response_model=StaffResponse, status_code=status.HTTP_201_CREATED)
 def create_staff(
     staff_in: StaffCreate, 
     db: pymysql.Connection = Depends(get_db),
     current_user: UserAccount = Depends(require_roles([SystemRoleEnum.Admin, SystemRoleEnum.Branch_Manager]))
 ):
     """Register a new staff member (Option C: PyMySQL)."""
+    # Enforce branch scoping for branch managers
+    target_branch_id = staff_in.Branch_ID
+    if current_user.System_Role == SystemRoleEnum.Branch_Manager:
+        manager_branch_id = get_staff_branch_id(db, current_user)
+        if not manager_branch_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Branch managers must be assigned to a branch to add staff."
+            )
+        if staff_in.Branch_ID is not None and staff_in.Branch_ID != manager_branch_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Branch managers can only add staff to their own branch"
+            )
+        target_branch_id = manager_branch_id
+    elif not target_branch_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Branch_ID is required"
+        )
+
     # Determine system role from explicit field or fallback to job title heuristics
     if staff_in.System_Role:
         role = staff_in.System_Role.value if hasattr(staff_in.System_Role, "value") else str(staff_in.System_Role)
@@ -137,7 +158,7 @@ def create_staff(
                 (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
-                    account_id, staff_in.Branch_ID, staff_in.First_Name, staff_in.Last_Name, 
+                    account_id, target_branch_id, staff_in.First_Name, staff_in.Last_Name, 
                     staff_in.Job_Title, staff_in.Contact_Number, staff_in.Email, staff_in.Employment_Status.value
                 )
             )

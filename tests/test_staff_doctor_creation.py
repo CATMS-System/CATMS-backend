@@ -78,7 +78,7 @@ def test_create_doctor_success_creates_doctor_and_specialties(auth_admin, cleanu
         }
 
         response = client.post("/api/v1/staff", json=payload)
-        assert response.status_code == 200, response.text
+        assert response.status_code == 201, response.text
         data = response.json()
         staff_id = data["Staff_ID"]
         cleanup_created_staff.append(staff_id)
@@ -173,7 +173,7 @@ def test_create_doctor_duplicate_license_returns_409(auth_admin, cleanup_created
             "Standard_Consultation_Fee": "2000.00",
         }
         res1 = client.post("/api/v1/staff", json=payload1)
-        assert res1.status_code == 200
+        assert res1.status_code == 201
         cleanup_created_staff.append(res1.json()["Staff_ID"])
 
         # Second doctor with identical license
@@ -208,7 +208,7 @@ def test_create_non_doctor_staff_does_not_insert_doctor(auth_admin, cleanup_crea
             "System_Role": "Receptionist",
         }
         res = client.post("/api/v1/staff", json=payload)
-        assert res.status_code == 200
+        assert res.status_code == 201
         staff_id = res.json()["Staff_ID"]
         cleanup_created_staff.append(staff_id)
 

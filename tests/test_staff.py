@@ -155,3 +155,108 @@ def test_admin_get_staff_receives_full_contact_and_email(client, auth_admin):
     detail = detail_resp.json()
     assert "Contact_Number" in detail
     assert "Email" in detail
+
+
+@pytest.fixture
+def cleanup_staff():
+    from app.db.connection import get_db_connection
+    created_staff_ids = []
+    yield created_staff_ids
+    if created_staff_ids:
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                for sid in created_staff_ids:
+                    cur.execute("SELECT Account_ID FROM Staff WHERE Staff_ID = %s", (sid,))
+                    row = cur.fetchone()
+                    acc_id = row["Account_ID"] if row else None
+                    cur.execute("DELETE FROM Staff WHERE Staff_ID = %s", (sid,))
+                    if acc_id:
+                        cur.execute("DELETE FROM User_Account WHERE Account_ID = %s", (acc_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def test_branch_manager_create_staff_own_branch_succeeds(client, auth_branch_manager_1, cleanup_staff):
+    payload = {
+        "First_Name": "Praveen",
+        "Last_Name": "Silva",
+        "Job_Title": "Front Desk Receptionist",
+        "Contact_Number": "0771234567",
+        "Email": "praveen.recept@example.com",
+        "Branch_ID": 1,
+        "System_Role": "Receptionist"
+    }
+    response = client.post("/api/v1/staff", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["Branch_ID"] == 1
+    assert data["First_Name"] == "Praveen"
+    cleanup_staff.append(data["Staff_ID"])
+
+
+def test_branch_manager_create_staff_different_branch_rejected(client, auth_branch_manager_1):
+    payload = {
+        "First_Name": "Malik",
+        "Last_Name": "Peiris",
+        "Job_Title": "Front Desk Receptionist",
+        "Contact_Number": "0771234568",
+        "Email": "malik.recept@example.com",
+        "Branch_ID": 2,
+        "System_Role": "Receptionist"
+    }
+    response = client.post("/api/v1/staff", json=payload)
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Branch managers can only add staff to their own branch"
+
+
+def test_branch_manager_create_doctor_own_branch_succeeds(client, auth_branch_manager_1, cleanup_staff):
+    payload = {
+        "First_Name": "Kamani",
+        "Last_Name": "Ratnayake",
+        "Job_Title": "Consultant Dermatologist",
+        "Contact_Number": "0775551234",
+        "Email": "kamani.derma@example.com",
+        "Branch_ID": 1,
+        "System_Role": "Doctor",
+        "License_Number": "SLMC-DERMA-9911",
+        "Standard_Consultation_Fee": "3000.00"
+    }
+    response = client.post("/api/v1/staff", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["Branch_ID"] == 1
+    assert data["License_Number"] == "SLMC-DERMA-9911"
+    cleanup_staff.append(data["Staff_ID"])
+
+    # Confirm Doctor table record
+    from app.db.connection import get_db_connection
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM Doctor WHERE Doctor_ID = %s", (data["Staff_ID"],))
+            doc_row = cur.fetchone()
+            assert doc_row is not None
+            assert doc_row["License_Number"] == "SLMC-DERMA-9911"
+    finally:
+        conn.close()
+
+
+def test_admin_create_staff_any_branch_succeeds(client, auth_admin, cleanup_staff):
+    payload = {
+        "First_Name": "Anura",
+        "Last_Name": "Dissanayake",
+        "Job_Title": "Accounts Assistant",
+        "Contact_Number": "0773334455",
+        "Email": "anura.accounts@example.com",
+        "Branch_ID": 2,
+        "System_Role": "Billing_Staff"
+    }
+    response = client.post("/api/v1/staff", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["Branch_ID"] == 2
+    assert data["First_Name"] == "Anura"
+    cleanup_staff.append(data["Staff_ID"])
+
