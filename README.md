@@ -139,6 +139,7 @@ As confirmed in the project document `TEAM_WORKLOAD_DISTRIBUTION.md`, the worklo
 - **Performance Indexes**: Added targeted database indexes in `sql/03_indexes.sql` for high-traffic appointment, date, and invoice searches.
 - **Rich Seed Data Generator**: `sql/seed_demo_data.py` creates a realistic 60-day demo history with 40 patients and ~780 appointments.
 - **Automated CI Workflow**: A GitHub Actions Continuous Integration (CI) workflow runs tests and checks against an automated MySQL 8.0 container on every push and pull request. (This workflow runs tests and builds only; it does not deploy the application).
+- **Full-Stack Containerization**: Docker packages the backend and frontend as separate images. The `docker-compose.full.yml` file runs MySQL, the backend API, and the frontend together, and initializes the database on first startup. Run `docker compose -f docker-compose.full.yml up --build` from the backend repository. The frontend repository must be in a sibling folder.
 
 ### Possible Future Improvements (Not Implemented Yet)
 - **Email, SMS, and Push Notifications**: Sending automated reminders for appointment bookings and payment receipts is not implemented in the current code; all queue and appointment statuses are currently viewed directly in the application UI.
