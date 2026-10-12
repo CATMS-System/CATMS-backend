@@ -664,7 +664,7 @@ def test_unknown_consultation_id_returns_404_for_all_roles():
 
 
 def test_mock_appointment_consultation_creation():
-    """Verifies that mock appointments (>= 1000) are cleanly auto-provisioned, completed, and generate an invoice."""
+    """Verifies that unknown appointment ids (even >= 1000) return 404 and nothing is auto-created."""
     doctor_user = UserAccount(
         Account_ID=2,
         Username="dr_bennett",
@@ -698,11 +698,7 @@ def test_mock_appointment_consultation_creation():
             "items": [{"treatment_id": 1, "quantity": 1, "instructions": "Review 12-lead ECG"}]
         }
         resp = client.post("/api/v1/consultations", json=payload)
-        assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.json()}"
-        data = resp.json()
-        assert data["invoice_id"] is not None
-        assert data["consultation_id"] is not None
-        print("Test Passed: Mock appointment 1004 cleanly completed with generated invoice.")
+        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.json()}"
     finally:
         app.dependency_overrides.pop(get_current_user, None)
 
