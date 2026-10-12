@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = ""
     DB_NAME: str = "CatMS"
     DB_USE_SSL: bool = False
+    DB_SSL_CA: str = ""
     DB_SSL_MODE: str = ""
 
     # Security settings

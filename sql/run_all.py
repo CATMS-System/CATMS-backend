@@ -23,15 +23,14 @@ DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_NAME = os.getenv("DB_NAME", "CatMS")
 DB_USE_SSL = os.getenv("DB_USE_SSL", "false").lower() in ("true", "1", "yes")
-
+DB_SSL_CA = os.getenv("DB_SSL_CA", "")
 
 def get_db_connection(include_database: bool = True) -> pymysql.Connection:
     ssl_config = None
     if DB_USE_SSL:
         import certifi
 
-        ssl_config = {"ca": certifi.where()}
-
+        ssl_config = {"ca": DB_SSL_CA or certifi.where()}
     conn_params = {
         "host": DB_HOST,
         "port": DB_PORT,

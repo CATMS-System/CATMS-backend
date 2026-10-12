@@ -14,7 +14,7 @@ def get_db_connection() -> pymysql.Connection:
     """Creates and returns a raw PyMySQL connection to the database."""
     ssl_config = None
     if settings.DB_USE_SSL:
-        ssl_config = {"ca": certifi.where()}
+        ssl_config = {"ca": settings.DB_SSL_CA or certifi.where()}
 
     return pymysql.connect(
         host=settings.DB_HOST,
