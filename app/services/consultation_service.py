@@ -59,7 +59,7 @@ def format_clinical_notes_with_vitals(
 
 def create_consultation(
     conn: pymysql.Connection,
-    payload: Union[ConsultationCreate, Dict[str, Any]]
+    payload: Union[ConsultationCreate, Dict[str, Any]],
     doctor_id: Optional[int] = None
 ) -> Dict[str, Any]:
     """
