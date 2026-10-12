@@ -10,21 +10,22 @@ This backend service is built with **Python**, **FastAPI**, and **MySQL 8.0**. I
 
 ## Table of Contents
 1. [What This Repository Does](#what-this-repository-does)
-2. [How the Backend Connects to the Frontend](#how-the-backend-connects-to-the-frontend)
-3. [Main Implemented Features](#main-implemented-features)
-4. [Team Workload Distribution](#team-workload-distribution)
-5. [Additional Features & Future Work](#additional-features--future-work)
-6. [Technologies Used](#technologies-used)
-7. [System Requirements](#system-requirements)
-8. [Local Setup Without Docker](#local-setup-without-docker)
-9. [Running with Docker Compose](#running-with-docker-compose)
-10. [API URLs & Health Check](#api-urls--health-check)
-11. [Database Setup & Demo Data](#database-setup--demo-data)
-12. [Environment Configuration](#environment-configuration)
-13. [Running Backend Tests](#running-backend-tests)
-14. [Project Structure Overview](#project-structure-overview)
-15. [Troubleshooting Common Issues](#troubleshooting-common-issues)
-16. [Security Notes](#security-notes)
+2. [Live Demo & Cloud Hosting](#live-demo--cloud-hosting)
+3. [How the Backend Connects to the Frontend](#how-the-backend-connects-to-the-frontend)
+4. [Main Implemented Features](#main-implemented-features)
+5. [Team Workload Distribution](#team-workload-distribution)
+6. [Additional Features & Future Work](#additional-features--future-work)
+7. [Technologies Used](#technologies-used)
+8. [System Requirements](#system-requirements)
+9. [Local Setup Without Docker](#local-setup-without-docker)
+10. [Running with Docker Compose](#running-with-docker-compose)
+11. [API URLs & Health Check](#api-urls--health-check)
+12. [Database Setup & Demo Data](#database-setup--demo-data)
+13. [Environment Configuration](#environment-configuration)
+14. [Running Backend Tests](#running-backend-tests)
+15. [Project Structure Overview](#project-structure-overview)
+16. [Troubleshooting Common Issues](#troubleshooting-common-issues)
+17. [Security Notes](#security-notes)
 
 ---
 
@@ -35,6 +36,26 @@ The backend service handles all database operations, business calculations, and 
 - **Safe Database Operations**: Critical actions like booking appointments, completing visits, and recording payments use stored procedures (`sp_book_appointment`, `sp_complete_consultation_and_generate_invoice`, `sp_record_payment`) so operations succeed or fail cleanly as a single unit.
 - **Overlap Prevention**: A MySQL trigger (`trg_check_appointment_overlap`) prevents double-booking doctors during conflicting time slots.
 - **Audit Logging**: Important data changes are tracked in an audit table with readable views (`vw_audit_log_readable`) that display usernames and branch names.
+
+---
+
+## Live Demo & Cloud Hosting
+
+A live demonstration of the full CATMS system is deployed and running on free-tier cloud infrastructure:
+
+| Component | Provider / Hosting Type | Live URL | Description |
+| :--- | :--- | :--- | :--- |
+| **Frontend Web App** | Render Static Site | [https://catms-frontend.onrender.com](https://catms-frontend.onrender.com) | Interactive React client with trilingual support |
+| **Backend API Root** | Render Web Service | [https://catms-backend.onrender.com](https://catms-backend.onrender.com) | FastAPI REST service root |
+| **Interactive API Docs** | Render Web Service | [https://catms-backend.onrender.com/docs](https://catms-backend.onrender.com/docs) | Swagger UI for exploring and testing API endpoints |
+| **Alternative API Docs** | Render Web Service | [https://catms-backend.onrender.com/redoc](https://catms-backend.onrender.com/redoc) | ReDoc API specifications |
+| **Backend Health Check** | Render Web Service | [https://catms-backend.onrender.com/api/v1/health](https://catms-backend.onrender.com/api/v1/health) | Live service and cloud database health status |
+
+> [!NOTE]
+> **Free Tier Sleep Notice**: Free services on Render automatically spin down or sleep after 15 minutes of inactivity. When visiting the site or API after a period of idleness, the first request may take approximately 30–50 seconds while the web service spins back up. Subsequent requests respond immediately.
+
+> [!CAUTION]
+> **Educational & Demo Use Only**: This deployment is strictly for academic and demonstration purposes. It contains fictional sample data only and **must not be used with real patient data** or clinical records.
 
 ---
 
@@ -140,6 +161,10 @@ As confirmed in the project document `TEAM_WORKLOAD_DISTRIBUTION.md`, the worklo
 - **Rich Seed Data Generator**: `sql/seed_demo_data.py` creates a realistic 60-day demo history with 40 patients and ~780 appointments.
 - **Automated CI Workflow**: A GitHub Actions Continuous Integration (CI) workflow runs tests and checks against an automated MySQL 8.0 container on every push and pull request. (This workflow runs tests and builds only; it does not deploy the application).
 - **Full-Stack Containerization**: Docker packages the backend and frontend as separate images. The `docker-compose.full.yml` file runs MySQL, the backend API, and the frontend together, and initializes the database on first startup. Run `docker compose -f docker-compose.full.yml up --build` from the backend repository. The frontend repository must be in a sibling folder.
+- **Cloud Hosting & Live Deployment**: The complete project is deployed and accessible online using free-tier cloud infrastructure:
+  - **Frontend**: Hosted as a **Render Static Site** at [https://catms-frontend.onrender.com](https://catms-frontend.onrender.com) with global CDN delivery.
+  - **Backend API**: Runs as a **Render Web Service** (Python / FastAPI) at [https://catms-backend.onrender.com](https://catms-backend.onrender.com).
+  - **Cloud Database**: Managed **MySQL 8.0** database hosted on **Aiven**, supporting all project schemas, views, stored procedures (`sp_book_appointment`, `sp_complete_consultation_and_generate_invoice`, `sp_record_payment`), and triggers (`trg_check_appointment_overlap`).
 
 ### Possible Future Improvements (Not Implemented Yet)
 - **Email, SMS, and Push Notifications**: Sending automated reminders for appointment bookings and payment receipts is not implemented in the current code; all queue and appointment statuses are currently viewed directly in the application UI.
@@ -151,7 +176,7 @@ As confirmed in the project document `TEAM_WORKLOAD_DISTRIBUTION.md`, the worklo
 
 ## Technologies Used
 
-- **Python**: 3.11 or 3.12
+- **Python**: 3.11 or 3.12 (also tested on 3.14)
 - **FastAPI**: Modern, high-performance web framework for APIs
 - **PyMySQL**: Pure-Python MySQL client for direct SQL execution
 - **MySQL 8.0**: Relational database server
@@ -159,7 +184,8 @@ As confirmed in the project document `TEAM_WORKLOAD_DISTRIBUTION.md`, the worklo
 - **PyJWT & Passlib**: Secure password hashing (bcrypt) and JWT tokens
 - **Uvicorn**: Lightweight ASGI web server
 - **Pytest**: Automated testing framework
-- **Docker**: Containerization for MySQL and full-stack deployment
+- **Docker & Docker Compose**: Containerization for MySQL and full-stack deployment
+- **Cloud Hosting**: Render (FastAPI Web Service) & Aiven (Managed MySQL 8.0 Database)
 
 ---
 
@@ -430,6 +456,7 @@ CATMS-backend/
 
 ## Security Notes
 
+- **Educational & Demo Use Only**: This project and its live cloud deployment are intended strictly for academic demonstration and evaluation. Never use this system or its cloud instances to store or process real patient medical records or personal health information (PHI).
 - **Demo Credentials**: All seed accounts and sample passwords are for testing and academic demonstration only.
 - **Production Use**: Before deploying to a real server:
   1. Set a strong, unique `SECRET_KEY` in `.env`.
