@@ -110,6 +110,12 @@ def create_staff(
             role = "Admin"
         else:
             role = "Receptionist"
+    # Only an admin can create Admin or Branch_Manager accounts
+    if current_user.System_Role == SystemRoleEnum.Branch_Manager and role in ("Admin", "Branch_Manager"):
+        raise HTTPException(
+            status_code=403,
+            detail="Branch managers cannot create Admin or Branch Manager accounts"
+        )
 
     # Validate mandatory doctor attributes
     if role == "Doctor":
