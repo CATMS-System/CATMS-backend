@@ -48,7 +48,8 @@ router = APIRouter()
 )
 def record_consultation(
     payload: ConsultationCreate,
-    conn: pymysql.Connection = Depends(get_db)
+    conn: pymysql.Connection = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
 ) -> ConsultationCreateResponse:
     """
     Record a new clinical consultation, prescribe itemized treatments,
@@ -62,8 +63,15 @@ def record_consultation(
     Maps service errors to HTTP 404 (not found), 409 (conflict / duplicate / invalid status),
     and 422 (un-processable entity / catalogue validation).
     """
+    # doctors may only record consultations for their own appointments
+    doctor_id = None
+    if current_user.System_Role == SystemRoleEnum.Doctor:
+        doctor_id = get_own_doctor_id(conn, current_user)
+        if doctor_id is None:
+            raise HTTPException(status_code=403, detail="No doctor profile is linked to this account.")
+
     try:
-        result = create_consultation(conn, payload)
+        result = create_consultation(conn, payload, doctor_id)
         return ConsultationCreateResponse(
             consultation_id=result["consultation_id"],
             invoice_id=result["invoice_id"]
