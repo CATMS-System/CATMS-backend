@@ -22,6 +22,13 @@ def login_access_token(db: pymysql.Connection = Depends(get_db), form_data: OAut
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     elif user_row['Account_Status'] != "Active":
         raise HTTPException(status_code=400, detail="Inactive user")
+
+    # terminated staff cannot log in
+    with db.cursor() as cursor:
+        cursor.execute("SELECT Employment_Status FROM Staff WHERE Account_ID = %s", (user_row['Account_ID'],))
+        staff_row = cursor.fetchone()
+    if staff_row and staff_row['Employment_Status'] == "Terminated":
+        raise HTTPException(status_code=400, detail="Inactive user")
         
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
