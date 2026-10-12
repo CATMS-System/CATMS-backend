@@ -11,6 +11,7 @@ This backend service is built with **Python**, **FastAPI**, and **MySQL 8.0**. I
 ## Table of Contents
 1. [What This Repository Does](#what-this-repository-does)
 2. [Live Demo & Cloud Hosting](#live-demo--cloud-hosting)
+   - [Demo User Credentials](#demo-user-credentials)
 3. [How the Backend Connects to the Frontend](#how-the-backend-connects-to-the-frontend)
 4. [Main Implemented Features](#main-implemented-features)
 5. [Team Workload Distribution](#team-workload-distribution)
@@ -56,6 +57,29 @@ A live demonstration of the full CATMS system is deployed and running on free-ti
 
 > [!CAUTION]
 > **Educational & Demo Use Only**: This deployment is strictly for academic and demonstration purposes. It contains fictional sample data only and **must not be used with real patient data** or clinical records.
+
+### Demo User Credentials
+
+To test and evaluate the different role-based portals on the live deployment or during local development, use the pre-seeded accounts below. All demo accounts share the same default password: **`Password123!`**.
+
+| Role | Username | Password | Branch / Scope | Details & Key Capabilities |
+| :--- | :--- | :--- | :--- | :--- |
+| **Admin** | `admin_alana` | `Password123!` | System-wide (All Branches) | System Administrator (Alana Smith) — User management, role assignments, staff directory, doctor licenses, and system-wide audit logs |
+| **Branch Manager** | `mgr_vance` | `Password123!` | Colombo Main Clinic | Marcus Vance — Branch operational statistics, staff schedules, appointments, and clinician availability |
+| **Branch Manager** | `mgr_silva` | `Password123!` | Kandy Central Clinic | Samantha Silva — Branch operations, appointments, and staff management for Kandy |
+| **Branch Manager** | `mgr_desilva` | `Password123!` | Galle Coastal Clinic | Rohan De Silva — Branch operations, appointments, and staff management for Galle |
+| **Doctor** | `dr_bennett` | `Password123!` | Colombo Main Clinic | Dr. Alexander Bennett (Cardiology / General Medicine) — Consultation room, vitals recording (BP, SpO2, temp), clinical notes, treatment prescriptions |
+| **Doctor** | `dr_jenkins` | `Password123!` | Kandy Central Clinic | Dr. Sarah Jenkins (General Medicine) — Patient consultations, diagnoses, and prescriptions for Kandy |
+| **Doctor** | `dr_perera` | `Password123!` | Galle Coastal Clinic | Dr. Nimal Perera (Dermatology) — Specialist consultations, dermatology procedures, and prescriptions for Galle |
+| **Receptionist** | `nurse_chen` | `Password123!` | Colombo Main Clinic | Emily Chen (Lead Triage Nurse / Reception) — Patient intake, doctor slot lookup, appointment booking, emergency walk-ins, and live queue |
+| **Receptionist** | `recept_shenaya` | `Password123!` | Colombo Main Clinic | Shenaya Perera (Chief Medical Receptionist) — Cross-branch patient search, registration, and appointment management |
+| **Billing Staff** | `billing_patel` | `Password123!` | Colombo Main Clinic | Sophia Patel — Invoices ledger, itemized billing breakdown, insurance claim submissions, payment recording, and balance tracking |
+| **Billing Staff** | `billing_kandy` | `Password123!` | Kandy Central Clinic | Kamal Perera — Billing, invoices, and insurance claim processing for Kandy branch |
+| **Billing Staff** | `billing_galle` | `Password123!` | Galle Coastal Clinic | Nirosha Silva — Billing, invoices, and insurance claim processing for Galle branch |
+| **Patient** | `pat_johndoe` | `Password123!` | Colombo (Patient Portal) | John Doe — Self-service appointment booking wizard across branches & doctors, visit history, and itemized billing statements |
+| **Patient** | `pat_clara` | `Password123!` | Kandy (Patient Portal) | Clara Oswald — Self-service appointment scheduling and consultation history |
+| **Patient** | `pat_david` | `Password123!` | Galle (Patient Portal) | David Miller — Self-service appointment scheduling and consultation history |
+| **Patient** | `pat_ananya` | `Password123!` | Colombo (Patient Portal) | Ananya Jayawardena — Self-service appointment scheduling and consultation history |
 
 ---
 
