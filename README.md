@@ -165,6 +165,7 @@ As confirmed in the project document `TEAM_WORKLOAD_DISTRIBUTION.md`, the worklo
   - **Frontend**: Hosted as a **Render Static Site** at [https://catms-frontend.onrender.com](https://catms-frontend.onrender.com) with global CDN delivery.
   - **Backend API**: Runs as a **Render Web Service** (Python / FastAPI) at [https://catms-backend.onrender.com](https://catms-backend.onrender.com).
   - **Cloud Database**: Managed **MySQL 8.0** database hosted on **Aiven**, supporting all project schemas, views, stored procedures (`sp_book_appointment`, `sp_complete_consultation_and_generate_invoice`, `sp_record_payment`), and triggers (`trg_check_appointment_overlap`).
+- **Responsive UI/UX**: The frontend adapts to phone, tablet, and desktop screens, with improved mobile navigation and layouts. Keyboard navigation, dialogs, and touch controls have also been made more accessible.
 
 ### Possible Future Improvements (Not Implemented Yet)
 - **Email, SMS, and Push Notifications**: Sending automated reminders for appointment bookings and payment receipts is not implemented in the current code; all queue and appointment statuses are currently viewed directly in the application UI.
