@@ -1,212 +1,216 @@
 # CATMS Backend Service
 
-Welcome to the backend repository of the **Clinic Appointment and Treatment Management System (CATMS)**. 
+Welcome to the backend repository of the **Clinic Appointment and Treatment Management System (CATMS)**.
 
-CATMS is an end-to-end outpatient healthcare platform designed for multi-branch clinics in Sri Lanka. It manages everything from patient intake and doctor scheduling to clinical consultations, electronic prescriptions, insurance claims, billing, and executive analytics.
+CATMS is a clinic management system created for outpatient healthcare centers in Sri Lanka. It helps manage multi-branch clinics, patient records, doctor schedules, appointments, clinical consultations, prescriptions, billing, insurance claims, and clinic reports.
 
-This service is built with **Python**, **FastAPI**, and **MySQL 8.0** using **Option C (Plain PyMySQL)** for high-performance direct SQL queries, transactions, and stored routines.
+This backend service is built with **Python**, **FastAPI**, and **MySQL 8.0**. It uses direct SQL queries with **PyMySQL** (Option C architecture) instead of an ORM to keep database operations fast, clear, and reliable.
 
 ---
 
 ## Table of Contents
-1. [Overview & Architecture](#overview--architecture)
-2. [How Backend & Frontend Connect](#how-backend--frontend-connect)
+1. [What This Repository Does](#what-this-repository-does)
+2. [How the Backend Connects to the Frontend](#how-the-backend-connects-to-the-frontend)
 3. [Main Implemented Features](#main-implemented-features)
 4. [Team Workload Distribution](#team-workload-distribution)
-5. [Additional & Future Features](#additional--future-features)
+5. [Additional Features & Future Work](#additional-features--future-work)
 6. [Technologies Used](#technologies-used)
 7. [System Requirements](#system-requirements)
-8. [Local Setup (Without Docker)](#local-setup-without-docker)
+8. [Local Setup Without Docker](#local-setup-without-docker)
 9. [Running with Docker Compose](#running-with-docker-compose)
-10. [URLs & Health Check](#urls--health-check)
-11. [Database Initialization & Seeding](#database-initialization--seeding)
+10. [API URLs & Health Check](#api-urls--health-check)
+11. [Database Setup & Demo Data](#database-setup--demo-data)
 12. [Environment Configuration](#environment-configuration)
-13. [Running Tests](#running-tests)
-14. [Project Structure](#project-structure)
-15. [Troubleshooting](#troubleshooting)
-16. [Security Guidelines](#security-guidelines)
+13. [Running Backend Tests](#running-backend-tests)
+14. [Project Structure Overview](#project-structure-overview)
+15. [Troubleshooting Common Issues](#troubleshooting-common-issues)
+16. [Security Notes](#security-notes)
 
 ---
 
-## Overview & Architecture
+## What This Repository Does
 
-The CATMS backend manages all business logic, data persistence, and security enforcement. Rather than relying on heavy ORM abstractions, the system uses plain **PyMySQL** connection pooling with custom SQL queries, transactions, stored procedures, and triggers. This ensures data integrity, strict concurrency control, and lightning-fast responses.
-
-Key architectural highlights:
-- **Option C Plain PyMySQL**: Clean separation between database connection handling, repository queries, and service-layer business rules.
-- **Atomic Operations**: Critical workflows like appointment booking (`sp_book_appointment`), consultation completion with initial invoicing (`sp_complete_consultation_and_generate_invoice`), and payment recording (`sp_record_payment`) execute atomically in MySQL.
-- **Database Triggers**: Schedule collision prevention trigger (`trg_check_appointment_overlap`) prevents double-booking a physician across overlapping time blocks.
-- **Auditing**: Core entity changes are captured in `Audit_Log` with readable views (`vw_audit_log_readable`).
+The backend service handles all database operations, business calculations, and security checks for CATMS:
+- **Direct Database Access (PyMySQL)**: Uses clear, plain SQL queries and transactions rather than heavy ORM layers.
+- **Safe Database Operations**: Critical actions like booking appointments, completing visits, and recording payments use stored procedures (`sp_book_appointment`, `sp_complete_consultation_and_generate_invoice`, `sp_record_payment`) so operations succeed or fail cleanly as a single unit.
+- **Overlap Prevention**: A MySQL trigger (`trg_check_appointment_overlap`) prevents double-booking doctors during conflicting time slots.
+- **Audit Logging**: Important data changes are tracked in an audit table with readable views (`vw_audit_log_readable`) that display usernames and branch names.
 
 ---
 
-## How Backend & Frontend Connect
+## How the Backend Connects to the Frontend
 
-The backend exposes a REST API at `http://localhost:8000/api/v1/`.
+The backend runs on port `8000` and provides a REST API:
 
-```
-  +--------------------------+          HTTP / JSON          +-------------------------+
-  |      CATMS Frontend      |  -------------------------->  |      CATMS Backend      |
-  | (React / Vite on :5173)  |  <--------------------------  |   (FastAPI on :8000)    |
-  +--------------------------+         Bearer Token          +-------------------------+
-                                                                          |
-                                                                   PyMySQL / TCP
-                                                                          v
-                                                             +-------------------------+
-                                                             |     MySQL 8.0 Database  |
-                                                             |     (Local / Docker)    |
-                                                             +-------------------------+
+```text
+  CATMS Frontend (React / Vite on port 5173)
+                     |
+                     |  HTTP requests with Bearer Token
+                     v
+  CATMS Backend  (FastAPI on port 8000)
+                     |
+                     |  PyMySQL connection (port 3306)
+                     v
+  MySQL 8.0 Database (Local or Docker container)
 ```
 
-- **CORS**: Configured in `app/main.py` to allow requests from `http://localhost:5173`.
-- **Authentication**: Stateful JSON Web Tokens (JWT). When a user logs in via `/api/v1/auth/login`, the backend issues an access token. The frontend sends this token in the `Authorization: Bearer <token>` header on subsequent requests.
-- **Error Handling**: Database integrity errors (duplicate NICs, foreign key conflicts, and trigger business rule signals) return clear 400/409 HTTP responses with descriptive messages for the frontend to display.
+- **CORS Support**: The backend allows requests from the frontend at `http://localhost:5173`.
+- **JWT Authentication**: Users log in at `/api/v1/auth/login` to receive an access token. The frontend sends this token in the `Authorization: Bearer <token>` header for protected API calls.
+- **Friendly Errors**: Database errors (such as duplicate identity card numbers or booking collisions) are returned as clear HTTP 400 or 409 responses with helpful error text instead of internal server errors.
 
 ---
 
 ## Main Implemented Features
 
-1. **Authentication & RBAC**:
-   - Secure login with role enforcement: `Admin`, `Branch_Manager`, `Doctor`, `Receptionist`, `Nurse`, `Billing_Staff`, and `Patient`.
-   - Password change endpoint (`/api/v1/auth/change-password`) with validation rules.
-2. **Branch & Staff Administration**:
-   - Multi-branch organization (Colombo Main, Kandy, Galle, Kurunegala, Jaffna).
-   - Staff member directory with role assignments and branch transfers.
-3. **Patient & Insurance Lifecycle**:
-   - Patient registration with National Identity Card (NIC), phone, and emergency contact details.
-   - Cross-branch patient search by name, NIC, or contact number.
-   - Insurance provider management and policy linking with coverage percentages and deductibles.
+1. **Authentication & User Roles**:
+   - Secure login with role-based permissions: `Admin`, `Branch_Manager`, `Doctor`, `Receptionist`, `Nurse`, `Billing_Staff`, and `Patient`.
+   - Password change endpoint (`/api/v1/auth/change-password`).
+2. **Branch & Staff Management**:
+   - Manages multiple clinic branches (Colombo Main, Kandy, Galle, Kurunegala, Jaffna).
+   - Staff directory with role assignments and branch transfers.
+3. **Patient & Insurance Records**:
+   - Patient registration with National Identity Card (NIC), contact numbers, and emergency contacts.
+   - Cross-branch patient search by name, NIC, or phone.
+   - Insurance provider management and policy linking with coverage percentages.
 4. **Doctor Schedules & Appointments**:
-   - Weekly doctor shift allocation and dynamic open-slot calculation.
-   - Scheduled appointment booking, emergency walk-in fast track, cancellation auditing, and rescheduling.
+   - Weekly doctor shift scheduling and available time slot calculations.
+   - Scheduled bookings, emergency walk-ins, cancellations with audit reasons, and rescheduling.
    - Live waiting queue endpoint by branch (`/api/v1/appointments/queue`).
 5. **Clinical Consultations & Prescriptions**:
-   - Clinical intake with vitals (blood pressure, heart rate, temperature, SpO2) and clinical notes.
-   - Itemized treatment prescriptions with standard pricing snapshots.
-   - Automatic invoice generation upon consultation completion.
-6. **Billing, Payments & Insurance Claims**:
-   - Detailed patient invoice balances with insurance copay calculations (`fn_policy_coverage`).
-   - Insurance claim submission, status transitions (`Submitted`, `Under_Review`, `Approved`, `Rejected`, `Settled`), and claim limits enforcement.
-   - Payment processing with cash, card, and bank transfer support.
-7. **Operational Management Reports**:
-   - Report 1: Daily and date-range appointments grouped by branch and booking type.
-   - Report 2: Doctor revenue generated by consultations and treatments.
-   - Report 3: Outstanding patient dues and unsettled balances.
-   - Report 4: Treatment category utilization and clinical popularity.
-   - Report 5: Insurance claim coverage vs. out-of-pocket patient payment ratio.
+   - Records patient vitals (blood pressure, heart rate, temperature, SpO2) and clinical diagnosis notes.
+   - Itemized treatment prescriptions from an active catalogue with price snapshots.
+   - Automatic invoice generation when a doctor completes a consultation.
+6. **Invoicing, Payments & Claims**:
+   - Calculates remaining patient dues and insurance coverage (`fn_policy_coverage`).
+   - Insurance claim submission with status tracking (`Submitted`, `Under_Review`, `Approved`, `Rejected`, `Settled`).
+   - Payment recording supporting cash, card, and bank transfers.
+7. **Clinic Reports**:
+   - Report 1: Appointments by branch and booking type (scheduled vs walk-in).
+   - Report 2: Doctor revenue from consultations and treatments.
+   - Report 3: Outstanding patient dues and unpaid balances.
+   - Report 4: Treatment category usage.
+   - Report 5: Insurance coverage compared to patient out-of-pocket payments.
+8. **Full-Stack Containerization**:
+   - Docker Compose can run MySQL 8.0, the backend, and the frontend together in one command using `docker-compose.full.yml`.
+   - The frontend repository must be placed in a sibling folder named `CATMS-frontend` alongside `CATMS-backend` so Docker Compose can find and build the frontend container.
 
 ---
 
 ## Team Workload Distribution
 
-The CATMS system was built by a collaborative 5-member team following the project workload specification:
+As confirmed in the project document `TEAM_WORKLOAD_DISTRIBUTION.md`, the workload is divided among 5 team members across distinct full-stack functional areas:
 
-* **Member 1 (Coordinator) – Core Foundation, Security & Clinic Administration**:
-  - Foundational FastAPI setup, Plain PyMySQL connection pooling, CORS, and unified error handling.
-  - JWT token generation, verification, and role-based access control (`require_roles`).
+* **Member 1: Core Foundation, Security & Clinic Administration (Coordinator)**:
+  - Base architecture setup (FastAPI app factory, CORS, connection pooling, error handlers).
+  - JWT authentication and role-based access dependencies (`get_current_user`, `require_roles`).
   - Endpoints and services for authentication (`/auth/login`, `/auth/me`), branches (`/branches`), staff (`/staff`), and audit logs (`/audit-logs`).
-  - Lead reviewer for cross-module integration and database schema alignment.
-* **Member 2 – Patient Registration & Insurance Management**:
-  - Patient lifecycle schema, validators (NIC, phone, date of birth), and CRUD operations.
-  - Emergency contact persistence and cross-branch search queries.
-  - Insurance provider management and patient insurance policy linking.
-  - Unit and integration tests for patient schemas, policies, and API endpoints.
-* **Member 3 – Doctor Availability & Appointment Lifecycle**:
-  - Doctor specialty mapping and weekly scheduling grids.
-  - Dynamic slot availability engine and atomic booking stored procedure (`sp_book_appointment`).
-  - Doctor appointment collision prevention trigger (`trg_check_appointment_overlap`).
-  - Endpoints for appointments, emergency walk-ins, rescheduling, cancellations, and live waiting queues.
-* **Member 4 – Clinical Consultations & Treatment Prescriptions**:
-  - Treatment catalogue search, category filters, and policy coverage lookups.
-  - Clinical consultation recording (vitals, diagnosis, doctor notes, follow-up date).
-  - Multi-item prescription handling and atomic consultation completion procedure (`sp_complete_consultation_and_generate_invoice`).
-* **Member 5 – Billing, Insurance Claims, Payments & Management Reports**:
-  - Invoicing, balance calculation function (`fn_calculate_patient_balance`), and atomic payment recording (`sp_record_payment`).
-  - Insurance claim filing, status workflows, and rule enforcement trigger (`trg_insurance_claim_rules`).
-  - SQL implementations and API endpoints for all 5 mandatory analytical management reports.
+  - Database tables: `User_Account`, `Audit_Log`, `Branch`, `Staff`.
+  - Lead reviewer for pull requests and system integration.
+* **Member 2: Patient Registration & Insurance Management**:
+  - Patient data models, validators (NIC, phone, date of birth), and registration endpoints.
+  - Emergency contacts and cross-branch search endpoints (`/patients`).
+  - Insurance provider management and policy linking (`/insurance/providers`, `/patients/{id}/policies`).
+  - Database tables: `Patient`, `Emergency_Contact`, `Insurance_Provider`, `Insurance_Policy`.
+* **Member 3: Doctor Availability & Appointment Lifecycle**:
+  - Doctor specialty mapping and weekly scheduling grids (`/doctors`, `/specialties`).
+  - Available time slot calculations and atomic booking stored procedure (`sp_book_appointment`).
+  - Doctor appointment overlap prevention trigger (`trg_check_appointment_overlap`).
+  - Endpoints for appointments, emergency walk-ins, rescheduling, cancellations, and waiting queues.
+  - Database tables: `Doctor`, `Specialty`, `Doctor_Specialty`, `Doctor_Schedule`, `Appointment`.
+* **Member 4: Clinical Consultations & Treatment Prescriptions**:
+  - Treatment catalogue search, category filters, and policy coverage lookups (`/treatments`).
+  - Consultation recording (vitals, clinical notes, diagnosis, follow-up date).
+  - Multi-item prescription handling and atomic visit completion procedure (`sp_complete_consultation_and_generate_invoice`).
+  - Database tables: `Treatment_Category`, `Treatment_Catalogue`, `Treatment_Policy_Eligibility`, `Consultation`, `Prescribed_Treatment`.
+* **Member 5: Billing, Insurance Claims, Payments & Management Reports**:
+  - Invoicing, balance calculation function (`fn_calculate_patient_balance`), and payment procedure (`sp_record_payment`).
+  - Insurance claim filing, status workflows, and claim limit trigger (`trg_insurance_claim_rules`).
+  - SQL implementations and API endpoints for all 5 analytical management reports (`/reports/*`).
+  - Database tables: `Invoice`, `Insurance_Claim`, `Payment`.
 
 ---
 
-## Additional & Future Features
+## Additional Features & Future Work
 
-### Features Already Implemented
-- **Multilingual Error Responses**: Descriptive error messages that translate cleanly into the frontend UI without exposing raw database dumps.
-- **Random First Password**: Automatic generation of temporary passwords for new patients (Fix C-2).
-- **Readable Audit Trails**: `vw_audit_log_readable` joins real account names and affected branch labels instead of showing generic placeholders (Fix M-6).
-- **Busiest Query Indexes**: Performance indexing in `sql/03_indexes.sql` targeting high-traffic appointment, invoice, and payment lookups.
-- **Rich Seed Data Generator**: `sql/seed_demo_data.py` populates a realistic 60-day historical clinic dataset with 40 patients and ~780 appointments.
-- **Automated CI Workflow**: GitHub Actions workflow testing the full database schema and test suite against an automated MySQL 8.0 container service.
+### Implemented Enhancements
+- **Clean Error Messaging**: Database signals and constraint checks return readable JSON messages for the UI instead of unhandled exceptions.
+- **Random First Password**: Automatically creates a temporary initial password when registering new patients.
+- **Real Names in Audit Log**: Uses the database view `vw_audit_log_readable` to display real staff usernames and branch names instead of generic placeholders.
+- **Performance Indexes**: Added targeted database indexes in `sql/03_indexes.sql` for high-traffic appointment, date, and invoice searches.
+- **Rich Seed Data Generator**: `sql/seed_demo_data.py` creates a realistic 60-day demo history with 40 patients and ~780 appointments.
+- **Automated CI Workflow**: A GitHub Actions Continuous Integration (CI) workflow runs tests and checks against an automated MySQL 8.0 container on every push and pull request. (This workflow runs tests and builds only; it does not deploy the application).
 
-### Possible Future Improvements (Not Yet Implemented)
-- **SMS & Email Notifications**: Automated reminder messages for upcoming appointments and payment receipts.
-- **Online Payment Gateways**: Integration with payment processors (e.g., Stripe, PayHere) for online portal payments.
-- **Lab & Radiology Attachments**: Support for uploading and attaching digital lab report PDFs or images to consultations.
-- **Recurring Doctor Shifts**: Bi-weekly or monthly automated schedule generation.
+### Possible Future Improvements (Not Implemented Yet)
+- **Email, SMS, and Push Notifications**: Sending automated reminders for appointment bookings and payment receipts is not implemented in the current code; all queue and appointment statuses are currently viewed directly in the application UI.
+- **Online Payment Gateway**: Adding external payment processors like Stripe or PayHere.
+- **File Uploads**: Attaching PDF or image lab reports directly to patient consultation records.
+- **Recurring Shifts**: Automatically repeating doctor schedules across future weeks.
 
 ---
 
 ## Technologies Used
 
-- **Language**: Python 3.11+ / Python 3.12
-- **Framework**: FastAPI (Asynchronous Web Framework)
-- **Database Driver**: PyMySQL (Direct SQL Execution)
-- **Database Server**: MySQL 8.0
-- **Validation**: Pydantic v2
-- **Authentication**: PyJWT, passlib with bcrypt
-- **Server Runner**: Uvicorn
-- **Testing**: pytest
+- **Python**: 3.11 or 3.12
+- **FastAPI**: Modern, high-performance web framework for APIs
+- **PyMySQL**: Pure-Python MySQL client for direct SQL execution
+- **MySQL 8.0**: Relational database server
+- **Pydantic v2**: Request data validation and response schemas
+- **PyJWT & Passlib**: Secure password hashing (bcrypt) and JWT tokens
+- **Uvicorn**: Lightweight ASGI web server
+- **Pytest**: Automated testing framework
+- **Docker**: Containerization for MySQL and full-stack deployment
 
 ---
 
 ## System Requirements
 
-Before you begin, ensure you have the following installed:
+To run the backend locally, you will need:
 - **Git**
 - **Python 3.11 or 3.12**
 - **pip** (Python package installer)
-- **Docker Desktop** (optional, but recommended for running MySQL easily)
+- **MySQL 8.0** installed locally, OR **Docker Desktop** to run MySQL in a container
 
 ---
 
-## Local Setup (Without Docker)
+## Local Setup Without Docker
 
-Follow these steps if you have a local MySQL 8.0 server installed directly on your machine.
+If you already have MySQL 8.0 running on your computer:
 
-### Step 1: Clone and Navigate
+### 1. Clone the Repository
 ```bash
 git clone https://github.com/CATMS-System/CATMS-backend.git
 cd CATMS-backend
 ```
 
-### Step 2: Create a Virtual Environment
+### 2. Create and Activate a Virtual Environment
 **On Windows (PowerShell):**
 ```powershell
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
-**On macOS / Linux:**
+**On macOS or Linux:**
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-### Step 3: Install Dependencies
+### 3. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### Step 4: Configure the Environment File
-Copy the sample environment file to create your local `.env`:
+### 4. Create Your Environment File
+Copy the example file to create `.env`:
 ```bash
 cp .env.example .env
 ```
-Open `.env` in your text editor and adjust the database credentials to match your local MySQL configuration:
+Open `.env` and set your local MySQL credentials:
 ```ini
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=your_local_mysql_password
+DB_PASSWORD=your_local_password
 DB_NAME=CatMS
 DB_USE_SSL=false
 SERVER_HOST=0.0.0.0
@@ -214,22 +218,21 @@ SERVER_PORT=8000
 SECRET_KEY=careflow-secret-key-for-dev-jwt-tokens-2026
 ```
 
-### Step 5: Initialize the Database
-Ensure your local MySQL service is running. Run the setup script to create the `CatMS` database, tables, triggers, views, stored procedures, and base seed records:
+### 5. Set Up the Database
+Make sure MySQL is running, then run the database script:
 ```bash
 python sql/run_all.py
 ```
-
-*(Optional)* To populate a rich demo dataset for testing reports and dashboards, run:
+*(Optional)* If you want a fuller demo dataset with 40 patients and ~780 appointments for testing reports:
 ```bash
 python sql/seed_demo_data.py
 ```
 
-### Step 6: Start the Backend Service
+### 6. Start the Backend Server
 ```bash
 python run.py
 ```
-Or directly with Uvicorn:
+Or with Uvicorn:
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -238,59 +241,60 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## Running with Docker Compose
 
-You have two convenient Docker options:
+You can use Docker Compose in two ways:
 
-### Option A: Database Only via Docker (Recommended for Local Development)
-If you want to run MySQL in a container while editing and running Python code locally on your host machine:
-
+### Option 1: Run MySQL in Docker, Run Code Locally
+This is the most common way to develop locally:
 1. Start the MySQL container:
    ```bash
    docker compose up -d
    ```
-2. Wait a few seconds for MySQL to become healthy, then run the database migration script:
+2. Wait about 10 seconds for MySQL to be ready, then initialize the database:
    ```bash
    python sql/run_all.py
    ```
-3. Start the Python server locally:
+3. Start the backend:
    ```bash
    python run.py
    ```
 
-### Option B: Full-Stack Stack (Database + Backend + Frontend)
-The repository includes a complete full-stack Compose configuration in `docker-compose.full.yml`.
+### Option 2: Full-Stack Stack (MySQL + Backend + Frontend)
+The repository includes a complete full-stack Compose setup in `docker-compose.full.yml`.
 
-> **Note on Folder Structure**: This file expects the frontend repository to be located in a sibling folder named `CATMS-frontend` alongside this directory:
+> **Important**: This Compose file expects the frontend repository to be located in a sibling folder named `CATMS-frontend`:
 > ```text
-> parent-folder/
+> your-project-folder/
 >   ├── CATMS-backend/      <-- Current directory
 >   └── CATMS-frontend/     <-- Sibling directory
 > ```
 
-To run the complete full-stack environment:
+To start the full stack:
 ```bash
 docker compose -f docker-compose.full.yml up --build
 ```
 
-This single command will:
-1. Start the MySQL 8.0 database container and perform health checks.
-2. Run `sql/init_if_empty.py` to automatically load the schema and seed data on first boot.
-3. Start the FastAPI backend container on `http://localhost:8000`.
-4. Build and serve the React frontend container with Nginx on `http://localhost:5173`.
+This starts:
+1. MySQL 8.0 on port `3306` with automatic health checks.
+2. A database initializer container that runs `sql/init_if_empty.py` to create tables and seed data automatically.
+3. The FastAPI backend on `http://localhost:8000`.
+4. The React frontend on `http://localhost:5173`.
+
+> **Note on GitHub Codespaces**: If you test this project in GitHub Codespaces, keep in mind that Codespaces is a temporary cloud development and demo environment. It will shut down when inactive and does not provide permanent production hosting.
 
 ---
 
-## URLs & Health Check
+## API URLs & Health Check
 
-When the backend service is running, the following endpoints are available:
+When the backend is running, you can access these URLs in your browser:
 
 | Resource | URL | Description |
 | :--- | :--- | :--- |
-| **API Root** | [http://localhost:8000/](http://localhost:8000/) | Service welcome message and link directory |
-| **Interactive Docs (Swagger)** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive API exploration and testing |
-| **Alternative Docs (ReDoc)** | [http://localhost:8000/redoc](http://localhost:8000/redoc) | Clean formatted API documentation |
-| **Health Check** | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) | Verifies API runtime and database connectivity |
+| **API Home** | [http://localhost:8000/](http://localhost:8000/) | Welcome message and API links |
+| **Interactive Docs (Swagger UI)** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive testing for all API endpoints |
+| **Alternative Docs (ReDoc)** | [http://localhost:8000/redoc](http://localhost:8000/redoc) | Clean, readable API documentation |
+| **Health Check** | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) | Checks API status and database connection |
 
-A healthy response from `/api/v1/health` looks like:
+A working health check returns:
 ```json
 {
   "status": "healthy",
@@ -303,60 +307,56 @@ A healthy response from `/api/v1/health` looks like:
 
 ---
 
-## Database Initialization & Seeding
+## Database Setup & Demo Data
 
-The database setup scripts are organized in the `sql/` directory:
+The database scripts in the `sql/` folder handle all database operations:
 
 1. **`python sql/run_all.py`**:
-   The primary runner. It executes:
-   - `sql/01_schema.sql` (Creates all 19 normalized tables, foreign keys, and check constraints)
-   - `sql/02_seed_data.sql` (Inserts branches, roles, specialties, doctors, staff, catalogue items, and baseline users)
-   - `database/functions/*.sql` (Installs custom functions like `fn_policy_coverage` and `fn_calculate_patient_balance`)
-   - `database/procedures/*.sql` (Installs stored procedures: `sp_book_appointment`, `sp_complete_consultation_and_generate_invoice`, `sp_record_payment`, etc.)
-   - `database/triggers/*.sql` (Installs business triggers: `trg_check_appointment_overlap`, `trg_insurance_claim_rules`, `trg_audit_core_entities`)
-   - `database/views/*.sql` (Installs views: `vw_audit_log_readable`, `vw_Invoice_Summary`, `vw_staff_directory`)
-   - `sql/03_indexes.sql` (Applies performance indexing on appointment dates and billing lookups)
-
+   The main setup script. It creates:
+   - Tables and constraints (`sql/01_schema.sql`)
+   - Initial clinic branches, doctors, staff, and catalogue items (`sql/02_seed_data.sql`)
+   - Stored functions, procedures, triggers, and views (`database/*`)
+   - Query performance indexes (`sql/03_indexes.sql`)
 2. **`python sql/seed_demo_data.py`**:
-   Generates a realistic test dataset containing 40 patients and ~780 appointments spanning the previous 60 days and the next 14 days. Ideal for demoing the reporting dashboards.
-
+   Adds an optional realistic demo dataset containing 40 patients, appointments, invoices, and payments over the last 60 days.
 3. **`python sql/init_if_empty.py`**:
-   Inspects the database; if tables are missing, it triggers `run_all.py`. Used automatically by the Docker Compose `db-init` container.
+   Checks if the database is empty and automatically runs `run_all.py`. Used by Docker Compose on first startup.
 
 ---
 
 ## Environment Configuration
 
-Configuration is managed via Pydantic settings in `app/core/config.py` and loaded from your `.env` file.
+Configuration values are defined in `app/core/config.py` and read from your `.env` file:
 
-| Variable | Default Value | Description |
+| Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `DB_HOST` | `localhost` | Database hostname (`127.0.0.1` or `mysql` in Docker) |
+| `DB_HOST` | `localhost` | Database host (`127.0.0.1` or `mysql` in Docker) |
 | `DB_PORT` | `3306` | MySQL port |
 | `DB_USER` | `root` | Database username |
 | `DB_PASSWORD` | `root` | Database password |
-| `DB_NAME` | `CatMS` | Target database schema name |
-| `DB_USE_SSL` | `false` | Whether to enable SSL connection |
-| `SERVER_HOST` | `0.0.0.0` | Backend bind address |
-| `SERVER_PORT` | `8000` | Port for the FastAPI server |
-| `SECRET_KEY` | *(dev fallback)* | Secret key used to sign and verify JWT authentication tokens |
+| `DB_NAME` | `CatMS` | Database name |
+| `DB_USE_SSL` | `false` | Whether to use SSL for database connections |
+| `SERVER_HOST` | `0.0.0.0` | IP address the API server listens on |
+| `SERVER_PORT` | `8000` | Port the API server listens on |
+| `SECRET_KEY` | *(dev fallback)* | Secret key used to sign and verify JWT login tokens |
 
-> **Important**: Never commit real passwords, secret keys, or private `.env` files to git. Always use `.env.example` as a template.
+> **Security Note**: Never commit your real `.env` file or passwords to Git. Always copy `.env.example` and keep your credentials private.
 
 ---
 
-## Running Tests
+## Running Backend Tests
 
-CATMS includes an extensive suite of automated tests verifying schema constraints, API endpoints, role permissions, and stored routines.
+CATMS has a comprehensive automated test suite using `pytest`.
 
 ### Standard Test Run
-To run all unit and repository tests (excluding tests requiring a dedicated disposable database):
+Runs all unit and repository tests:
 ```bash
 python -m pytest -q
 ```
+*Expected: 444 tests pass (48 database integration tests are skipped by default to avoid altering your local database).*
 
-### Full Test Suite (Including Live MySQL Integration Tests)
-To enable the 48 MySQL transaction and stored procedure integration tests (`tests/test_payment_mysql_integration.py`):
+### Full Test Run (With Live MySQL Integration Tests)
+To run all 492 tests including the live database transaction tests in `tests/test_payment_mysql_integration.py`:
 
 **In PowerShell:**
 ```powershell
@@ -368,12 +368,11 @@ python -m pytest -q
 ```bash
 CATMS_RUN_MYSQL_TESTS=1 python -m pytest -q
 ```
-
-*Expected output: All 492 tests pass.*
+*Expected: All 492 tests pass.*
 
 ---
 
-## Project Structure
+## Project Structure Overview
 
 ```text
 CATMS-backend/
@@ -382,57 +381,57 @@ CATMS-backend/
 │   │   ├── deps.py               # Shared auth & DB dependencies
 │   │   └── v1/
 │   │       ├── router.py         # Main API router & health check
-│   │       └── endpoints/        # Modular domain route handlers
+│   │       └── endpoints/        # Modular API routes (appointments, billing, etc.)
 │   ├── core/
-│   │   ├── config.py             # Environment settings & configuration
-│   │   └── security.py           # Password hashing & JWT token management
+│   │   ├── config.py             # Settings read from .env
+│   │   └── security.py           # Password hashing & JWT tokens
 │   ├── db/
 │   │   └── connection.py         # PyMySQL connection factory
-│   ├── repositories/             # Direct SQL data access queries
+│   ├── repositories/             # Direct SQL database queries
 │   ├── schemas/                  # Pydantic request and response models
-│   ├── services/                 # Business logic, validations, & transactions
-│   └── main.py                   # FastAPI application initialization & CORS
+│   ├── services/                 # Business logic and transaction handling
+│   └── main.py                   # FastAPI setup and CORS configuration
 ├── database/
 │   ├── functions/                # Stored functions (*.sql)
 │   ├── procedures/               # Stored procedures (*.sql)
-│   ├── triggers/                 # Collision & business triggers (*.sql)
-│   └── views/                    # Readable reporting views (*.sql)
+│   ├── triggers/                 # Database triggers (*.sql)
+│   └── views/                    # Reporting database views (*.sql)
 ├── sql/
-│   ├── 01_schema.sql             # Table definitions & constraints
-│   ├── 02_seed_data.sql          # Seed clinics, staff, & default users
+│   ├── 01_schema.sql             # Table creation and constraints
+│   ├── 02_seed_data.sql          # Seed data for branches, staff, and doctors
 │   ├── 03_indexes.sql            # Performance indexes
-│   ├── init_if_empty.py          # Automatic initializer for Docker
-│   ├── run_all.py                # Database rebuild & routine runner
+│   ├── init_if_empty.py          # Docker database initializer
+│   ├── run_all.py                # Database setup runner
 │   └── seed_demo_data.py         # Realistic demo data generator
-├── tests/                        # Automated pytest test suites
-├── Dockerfile                    # Backend container definition
+├── tests/                        # Pytest automated test suites
+├── Dockerfile                    # Backend Docker container definition
 ├── docker-compose.yml            # Database-only Docker service
-├── docker-compose.full.yml       # Complete multi-service stack
-├── requirements.txt              # Python project dependencies
-├── run.py                        # Local server entry point
+├── docker-compose.full.yml       # Full-stack Docker Compose service
+├── requirements.txt              # Python library dependencies
+├── run.py                        # Local server startup script
 └── README.md                     # This documentation file
 ```
 
 ---
 
-## Troubleshooting
+## Troubleshooting Common Issues
 
-- **`Can't connect to MySQL server on 'localhost'`**:
-  Ensure your MySQL container or local service is running. If using Docker, run `docker ps` to verify `catms-mysql` is healthy on port `3306`.
-- **`Access denied for user 'root'@'...'`**:
-  Check `DB_PASSWORD` in your `.env` file to ensure it matches the password configured in your MySQL server.
-- **`48 tests skipped`**:
-  Integration tests in `test_payment_mysql_integration.py` perform real database transactions and are intentionally skipped unless the environment variable `CATMS_RUN_MYSQL_TESTS=1` is set.
-- **Port 8000 already in use**:
-  Another application is using port 8000. Stop that process, or set `SERVER_PORT=8001` in `.env` (and update the proxy in the frontend's `vite.config.js`).
+- **Database Connection Refused**:
+  Make sure your MySQL server is running. If using Docker, run `docker ps` to verify that `catms-mysql` is running on port `3306`.
+- **Access Denied for User 'root'**:
+  Check `DB_PASSWORD` in your `.env` file to ensure it matches your MySQL root password.
+- **Why are 48 tests skipped?**:
+  The 48 tests in `tests/test_payment_mysql_integration.py` perform real database writes and rollbacks. They are skipped by default to keep local data safe. Set `CATMS_RUN_MYSQL_TESTS=1` to run them.
+- **Port 8000 is already in use**:
+  Another application is using port 8000. Stop that program or change `SERVER_PORT=8001` in your `.env` file (remember to also update the proxy in the frontend's `vite.config.js`).
 
 ---
 
-## Security Guidelines
+## Security Notes
 
-- **Demo Credentials Only**: The seed accounts provided in this codebase are intended solely for academic review and demonstration purposes.
-- **Production Deployments**: Before deploying to a production server:
-  1. Generate a strong, random `SECRET_KEY` (at least 32 characters long).
-  2. Use secure, strong database passwords.
-  3. Ensure `.env` is never committed to source control.
-  4. Restrict CORS origins in `app/main.py` to your production domain.
+- **Demo Credentials**: All seed accounts and sample passwords are for testing and academic demonstration only.
+- **Production Use**: Before deploying to a real server:
+  1. Set a strong, unique `SECRET_KEY` in `.env`.
+  2. Use a secure database password and non-root database user.
+  3. Ensure `.env` is never added to Git.
+  4. Restrict CORS in `app/main.py` to your real frontend domain.
