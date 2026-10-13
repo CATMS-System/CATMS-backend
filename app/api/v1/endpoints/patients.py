@@ -3,7 +3,7 @@
 # search and read: Admin, Branch_Manager, Receptionist, Doctor
 # policies: Admin, Branch_Manager, Receptionist, Doctor, Billing_Staff
 import pymysql
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Response
 
 from app.api.deps import get_db, require_roles, get_current_user
 from app.schemas.user import SystemRoleEnum, UserAccount
@@ -30,9 +30,11 @@ router = APIRouter()
 )
 def register_patient(
     data: PatientCreate,
+    response: Response,
     conn: pymysql.Connection = Depends(get_db),
     current_user: UserAccount = Depends(get_current_user),
 ):
+# the response holds a one-time password, so it must not be cached
     return patient_service.register_patient(conn, data, account_id=current_user.Account_ID)
 
 # search by name, nic, phone or patient id, empty search lists everyone
