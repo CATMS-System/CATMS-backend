@@ -34,7 +34,8 @@ def register_patient(
     conn: pymysql.Connection = Depends(get_db),
     current_user: UserAccount = Depends(get_current_user),
 ):
-# the response holds a one-time password, so it must not be cached
+    # the response holds a one-time password, so it must not be cached
+    response.headers["Cache-Control"] = "no-store"
     return patient_service.register_patient(conn, data, account_id=current_user.Account_ID)
 
 # search by name, nic, phone or patient id, empty search lists everyone
