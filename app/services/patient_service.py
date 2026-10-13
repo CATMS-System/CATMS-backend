@@ -176,8 +176,12 @@ def build_search_condition(search_text):
                "CONCAT(First_Name, ' ', Last_Name) LIKE %(like)s",
     ]
 
-    # only digits, so it could be a patient id
-    if text.isdigit():
+    # check if search text is a formatted patient code (e.g. PAT-0014, PAT 14) or pure digits
+    patient_code_match = re.fullmatch(r"pat[- ]*(\d+)", text, re.IGNORECASE)
+    if patient_code_match:
+        parts.append("Patient_ID = %(patient_id)s")
+        values["patient_id"] = int(patient_code_match.group(1))
+    elif text.isdigit():
         parts.append("Patient_ID = %(patient_id)s")
         values["patient_id"] = int(text)
 
