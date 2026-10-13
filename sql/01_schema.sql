@@ -24,7 +24,6 @@ DROP TABLE IF EXISTS Treatment_Catalogue;
 DROP TABLE IF EXISTS Treatment_Category;
 DROP TABLE IF EXISTS Insurance_Policy;
 DROP TABLE IF EXISTS Insurance_Provider;
-DROP TABLE IF EXISTS Patient_Portal_Invite;
 DROP TABLE IF EXISTS Emergency_Contact;
 DROP TABLE IF EXISTS Patient;
 DROP TABLE IF EXISTS Doctor_Schedule;
