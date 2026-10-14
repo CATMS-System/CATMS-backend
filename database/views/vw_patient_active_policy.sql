@@ -1,7 +1,6 @@
 -- View: vw_patient_active_policy
 -- Domain: Patients, Emergency Contacts & Insurance (Member 2)
--- One row per usable policy: status Active and today between
--- Start_Date and End_Date (the same rule as get_policies(only_active=True)).
+-- One row per usable policy: status Active and today between Start_Date and End_Date (the same rule as get_policies(only_active=True)).
 -- Joins Patient, Insurance_Policy and Insurance_Provider.
 CREATE OR REPLACE VIEW vw_patient_active_policy AS
 SELECT
