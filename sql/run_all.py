@@ -174,6 +174,8 @@ def all_database_routine_files() -> list[Path]:
         BASE_DIR / "database/triggers/trg_check_appointment_overlap.sql",
         BASE_DIR / "database/triggers/trg_audit_core_entities.sql",
         BASE_DIR / "database/triggers/trg_insurance_claim_rules.sql",
+        BASE_DIR / "database/views/vw_patient_active_policy.sql", 
+        BASE_DIR / "database/procedures/sp_expire_policies.sql", 
     ]
 
 
