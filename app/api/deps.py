@@ -98,11 +98,16 @@ def get_own_doctor_id(db: pymysql.Connection, user: UserAccount) -> int | None:
         return row["Doctor_ID"] if row else None
 
 def doctor_has_treated_patient(db: pymysql.Connection, doctor_id: int, patient_id: int) -> bool:
+    """Check if the doctor has at least one completed consultation with the patient.
+    This ensures that only doctors who have actually treated the patient can view
+    the patient's consultation history.
+    """
     with db.cursor() as cursor:
         cursor.execute(
             """
-            SELECT 1 FROM Appointment 
-            WHERE Doctor_ID = %s AND Patient_ID = %s 
+            SELECT 1 FROM Consultation c
+            JOIN Appointment a ON c.Appointment_ID = a.Appointment_ID
+            WHERE a.Doctor_ID = %s AND a.Patient_ID = %s
             LIMIT 1
             """,
             (doctor_id, patient_id)
